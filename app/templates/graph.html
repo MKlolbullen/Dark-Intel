@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block body %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow/dist/drawflow.min.css">
+<script src="https://cdn.jsdelivr.net/npm/drawflow/dist/drawflow.min.js"></script>
+
+<div class="h-screen flex overflow-hidden">
+  <!-- Left sidebar -->
+  <aside id="left" class="w-64 shrink-0 bg-gray-800 p-4 space-y-4 hidden md:block">
+    <h2 class="text-xl font-semibold mb-2">Ask AI</h2>
+    <form id="askForm" class="space-y-2">
+      <textarea id="question" rows="4" class="w-full p-2 rounded bg-gray-700"></textarea>
+      <button type="submit" class="w-full bg-indigo-600 py-2 rounded">Run</button>
+    </form>
+    <div class="border-t border-gray-600 pt-4">
+      <button id="toggleMode" class="w-full bg-gray-700 py-1 rounded">Toggle Canvas Theme</button>
+    </div>
+  </aside>
+
+  <!-- Canvas -->
+  <main class="flex-1 relative">
+    <div id="df" class="absolute inset-0"></div>
+  </main>
+
+  <!-- Right sidebar -->
+  <aside id="right" class="w-72 shrink-0 bg-gray-800 p-4 hidden md:block overflow-y-auto">
+    <h2 class="text-xl font-semibold mb-2">AI Summary</h2>
+    <pre id="summary" class="whitespace-pre-wrap"></pre>
+  </aside>
+</div>
+
+<!-- Mobile toggles -->
+<button id="toggleLeft" class="fixed top-4 left-4 md:hidden bg-indigo-600 p-2 rounded">☰</button>
+<button id="toggleRight" class="fixed top-4 right-4 md:hidden bg-indigo-600 p-2 rounded">★</button>
+
+<script src="{{ url_for('static', filename='js/graph.js') }}"></script>
+{% endblock %}
