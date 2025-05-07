@@ -1,4 +1,6 @@
 # Dark-Intel
+
+```markdown
 | dark_intel/
 ├── run.py
 ├── requirements.txt
@@ -22,3 +24,4 @@
 │       ├── css/style.css
 │       └── js/graph.js
 └── intel_graph.db   # auto‑created at runtime
+```
