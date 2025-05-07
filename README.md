@@ -1,1 +1,24 @@
 # Dark-Intel
+| dark_intel/
+├── run.py
+├── requirements.txt
+├── app/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── routes.py
+│   ├── models.py
+│   ├── pipeline/
+│   │   ├── __init__.py
+│   │   ├── async_loader.py
+│   │   ├── entities.py
+│   │   ├── rag.py
+│   │   └── source_selection.py
+│   ├── templates/
+│   │   ├── base.html
+│   │   ├── index.html
+│   │   ├── results.html
+│   │   └── graph.html
+│   └── static/
+│       ├── css/style.css
+│       └── js/graph.js
+└── intel_graph.db   # auto‑created at runtime
