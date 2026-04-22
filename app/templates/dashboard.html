@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block body %}
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+
+<header class="border-b border-gray-800 bg-gray-900 p-4 flex justify-between items-baseline">
+  <div class="space-y-1">
+    <h1 class="text-xl font-bold">{{ analysis.business_name }}</h1>
+    <p class="text-sm text-gray-400">
+      <span>{{ analysis.industry }}</span>
+      <span class="text-gray-600">·</span>
+      <span>{{ analysis.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+      <span class="text-gray-600">·</span>
+      <span>{{ analysis.model }}</span>
+    </p>
+  </div>
+  <nav class="text-sm space-x-3">
+    <a class="text-indigo-400 underline" href="{{ url_for('main.index') }}">New analysis</a>
+    <a class="text-indigo-400 underline" href="{{ url_for('main.graph', analysis_id=analysis.id) }}">Graph</a>
+  </nav>
+</header>
+
+<main class="p-4 space-y-4">
+  <p id="status" class="text-sm text-gray-400">Loading…</p>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div id="source_mix" class="bg-gray-900 rounded p-2 h-80"></div>
+    <div id="avg_sentiment" class="bg-gray-900 rounded p-2 h-80"></div>
+    <div id="sentiment_dist" class="bg-gray-900 rounded p-2 h-80"></div>
+    <div id="top_entities" class="bg-gray-900 rounded p-2 h-80"></div>
+    <div id="timeline" class="bg-gray-900 rounded p-2 h-80 lg:col-span-2"></div>
+  </section>
+
+  {% if analysis.summary %}
+  <section class="bg-gray-900 rounded p-4 space-y-2">
+    <h2 class="text-sm uppercase tracking-wide text-gray-400">Summary</h2>
+    <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ analysis.summary }}</p>
+  </section>
+  {% endif %}
+</main>
+
+<script>window.ANALYSIS_ID = {{ analysis.id }};</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

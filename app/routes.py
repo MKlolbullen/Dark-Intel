@@ -1,6 +1,7 @@
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, render_template, request
 from sqlmodel import Session, select
 
+from .analysis import aggregations, sentiment
 from .config import Config
 from .models import Analysis, Edge, Node, engine
 from .pipeline import run_pipeline
@@ -44,11 +45,34 @@ def graph():
     )
 
 
+@main_bp.route("/dashboard")
+def dashboard():
+    analysis_id = request.args.get("analysis_id", type=int)
+    if analysis_id is None:
+        abort(400, "analysis_id is required")
+    with Session(engine) as s:
+        analysis = s.get(Analysis, analysis_id)
+    if analysis is None:
+        abort(404)
+    return render_template("dashboard.html", analysis=analysis)
+
+
 @main_bp.route("/api/analyses")
 def api_analyses():
     with Session(engine) as s:
         rows = s.exec(select(Analysis).order_by(Analysis.created_at.desc())).all()
         return jsonify([r.dict() for r in rows])
+
+
+@main_bp.route("/api/analysis/<int:analysis_id>/charts")
+def api_analysis_charts(analysis_id: int):
+    """Return chart data for the dashboard. Lazily backfills sentiment scores."""
+
+    with Session(engine) as s:
+        if s.get(Analysis, analysis_id) is None:
+            abort(404)
+    sentiment.score_unscored_sync(analysis_id)
+    return jsonify(aggregations.all_charts(analysis_id))
 
 
 @main_bp.route("/api/nodes")
