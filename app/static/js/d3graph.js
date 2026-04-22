@@ -25,9 +25,12 @@ async function drawGraph() {
   const width = +svg.node().getBoundingClientRect().width;
   const height = +svg.node().getBoundingClientRect().height;
 
+  const params = new URLSearchParams(window.location.search);
+  const analysisId = params.get("analysis_id");
+  const qs = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
   const [nodes, edges] = await Promise.all([
-    fetch("/api/nodes").then(r => r.json()),
-    fetch("/api/edges").then(r => r.json())
+    fetch(`/api/nodes${qs}`).then(r => r.json()),
+    fetch(`/api/edges${qs}`).then(r => r.json())
   ]);
 
   const nodeById = {};

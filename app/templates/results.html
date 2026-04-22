@@ -30,7 +30,7 @@
   {% endif %}
 
   <p class="pt-4">
-    <a href="{{ url_for('main.graph') }}" class="text-indigo-400 underline text-sm">
+    <a href="{{ url_for('main.graph', analysis_id=analysis_id) }}" class="text-indigo-400 underline text-sm">
       View knowledge graph &rarr;
     </a>
   </p>
