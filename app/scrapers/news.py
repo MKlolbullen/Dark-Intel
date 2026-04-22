@@ -5,7 +5,12 @@ import logging
 
 import httpx
 
-from ._html import clean_html_to_text, extract_title
+from ._html import (
+    clean_html_to_text,
+    discover_internal_paths,
+    extract_meta_summary,
+    extract_title,
+)
 from .base import BaseScraper, ScrapedDoc, ScrapeQuery
 
 logger = logging.getLogger(__name__)
@@ -19,8 +24,6 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-# Industry seed pages. Keys are lowercased substrings of the industry input.
-# Generic seeds are appended for every query so we always have something to fetch.
 INDUSTRY_SEEDS: dict[str, list[str]] = {
     "fintech": [
         "https://techcrunch.com/category/fintech/",
@@ -39,66 +42,102 @@ GENERIC_SEEDS = [
     "https://techcrunch.com/",
 ]
 
-# When the user supplies their own website, fetch the same curated path set
-# we use for competitor domains so their own about / pricing / products text
-# lands in the corpus alongside.
-OWN_SITE_PATHS: tuple[str, ...] = (
-    "/",
-    "/about",
-    "/about-us",
-    "/product",
-    "/products",
-    "/features",
-    "/pricing",
-    "/blog",
-    "/news",
-)
+MIN_BODY_CHARS = 200
+MIN_META_CHARS = 80
 
 
 class NewsScraper(BaseScraper):
     """Fetch and clean a curated set of news + own-site URLs.
 
-    Lower-friction than the structured news APIs: just GET each seed and
-    let the entity extraction + RAG layers do the rest. Also pulls the
-    user's own website paths when `ScrapeQuery.business_domain` is set —
-    prefer that over the old `{slug}.com/about` guess, which was almost
-    always a 404.
+    For the user's own website (`ScrapeQuery.business_domain`) we fetch
+    the homepage first, then parse its navigation for paths whose slug
+    matches common nav keywords across several languages. That way
+    non-English sites (om-oss, uber-uns, a-propos, sobre, …) aren't
+    just an empty bag of 404s.
+
+    When a page's main body collapses to under `MIN_BODY_CHARS` (likely
+    a JS-rendered shell), we fall back to the meta summary — title +
+    og: / description — so the corpus still gets *something*.
     """
 
     kind = "news"
 
-    def _seeds(self, query: ScrapeQuery) -> list[str]:
+    def _industry_seeds(self, query: ScrapeQuery) -> list[str]:
         seeds = list(GENERIC_SEEDS)
         industry = (query.industry or "").lower()
         for key, urls in INDUSTRY_SEEDS.items():
             if key in industry:
                 seeds.extend(urls)
-        if query.business_domain:
-            for path in OWN_SITE_PATHS:
-                seeds.append(f"https://{query.business_domain}{path}")
-        return list(dict.fromkeys(seeds))  # dedupe, preserve order
+        return list(dict.fromkeys(seeds))
 
     async def _fetch(self, query: ScrapeQuery) -> list[ScrapedDoc]:
-        urls = self._seeds(query)
-        async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            results = await asyncio.gather(*[self._get(client, u) for u in urls])
-        docs = [r for r in results if r is not None]
+        async with httpx.AsyncClient(
+            headers=HEADERS, follow_redirects=True, timeout=15
+        ) as client:
+            tasks: list[asyncio.Future] = []
+            for url in self._industry_seeds(query):
+                tasks.append(self._fetch_url(client, url))
+            own_future = None
+            if query.business_domain:
+                own_future = asyncio.ensure_future(
+                    self._fetch_domain(client, query.business_domain)
+                )
+            seed_results = await asyncio.gather(*tasks) if tasks else []
+        docs = [r for r in seed_results if r is not None]
+        if own_future is not None:
+            docs.extend(await own_future)
         return docs[: query.limit_per_source]
 
-    async def _get(self, client: httpx.AsyncClient, url: str) -> ScrapedDoc | None:
+    async def _fetch_url(
+        self, client: httpx.AsyncClient, url: str
+    ) -> ScrapedDoc | None:
         try:
             r = await client.get(url)
             r.raise_for_status()
         except Exception as exc:
             logger.info("news GET %s failed: %s", url, exc)
             return None
-        text = clean_html_to_text(r.text)
-        if len(text) < 200:
-            logger.debug("news GET %s returned only %d chars, dropping", url, len(text))
-            return None
-        return ScrapedDoc(
-            text=text,
-            url=url,
-            kind=self.kind,
-            title=extract_title(r.text),
+        return _as_doc(url, r.text, self.kind)
+
+    async def _fetch_domain(
+        self, client: httpx.AsyncClient, domain: str
+    ) -> list[ScrapedDoc]:
+        root_url = f"https://{domain}/"
+        try:
+            r = await client.get(root_url)
+            r.raise_for_status()
+        except Exception as exc:
+            logger.info("news GET %s failed: %s", root_url, exc)
+            return []
+        root_html = r.text
+        paths = discover_internal_paths(root_html, domain)
+        logger.info(
+            "news discovered %d nav path(s) on %s: %s",
+            len(paths),
+            domain,
+            paths,
         )
+
+        docs: list[ScrapedDoc] = []
+        root_doc = _as_doc(root_url, root_html, self.kind)
+        if root_doc:
+            docs.append(root_doc)
+
+        tasks = [self._fetch_url(client, f"https://{domain}{p}") for p in paths]
+        for result in await asyncio.gather(*tasks):
+            if result is not None:
+                docs.append(result)
+        return docs
+
+
+def _as_doc(url: str, html: str, kind: str) -> ScrapedDoc | None:
+    text = clean_html_to_text(html)
+    if len(text) < MIN_BODY_CHARS:
+        fallback = extract_meta_summary(html)
+        if len(fallback) >= MIN_META_CHARS:
+            logger.debug("news %s body thin (%d chars), using meta summary", url, len(text))
+            text = fallback
+        else:
+            logger.debug("news %s too thin (body=%d meta=%d), dropping", url, len(text), len(fallback))
+            return None
+    return ScrapedDoc(text=text, url=url, kind=kind, title=extract_title(html))
