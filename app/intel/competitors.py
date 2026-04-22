@@ -1,4 +1,4 @@
-"""Discover competitors of a target business via Claude.
+"""Discover competitors of a target business via the active LLM.
 
 Used as a fallback when the user doesn't supply an explicit competitor
 list. Returns a list of Competitor(name, domain) ready to feed into
@@ -7,15 +7,10 @@ CompetitorsScraper.
 
 from __future__ import annotations
 
-import json
 import re
 
-import anthropic
-
-from ..config import Config
+from ..llm import get_default_client
 from ..scrapers.base import Competitor
-
-_client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
 
 _SYSTEM = (
     "You are a market analyst. Identify the most relevant direct competitors "
@@ -52,21 +47,14 @@ async def discover_competitors(
     n: int = 5,
 ) -> list[Competitor]:
     user = f"Business: {business_name}\nIndustry: {industry}\nReturn the top {n}."
-    try:
-        response = await _client.messages.create(
-            model=Config.CLAUDE_MODEL,
-            max_tokens=512,
-            thinking={"type": "adaptive"},
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": user}],
-            output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
-        )
-    except Exception:
-        return []
-    text = next((b.text for b in response.content if b.type == "text"), "{}").strip()
-    try:
-        data = json.loads(text)
-    except Exception:
+    data = await get_default_client().acomplete_json(
+        system=_SYSTEM,
+        user=user,
+        schema=_SCHEMA,
+        max_tokens=512,
+        thinking=True,
+    )
+    if not data:
         return []
     out: list[Competitor] = []
     seen: set[str] = set()

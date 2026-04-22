@@ -50,15 +50,19 @@ python run.py       # or just the web UI on http://127.0.0.1:5000
 
 See `SCRAPING.md` for the legal / ToS posture per channel before enabling anything opt-in.
 
-## Two LLM tiers
+## LLM provider
 
-Split env vars keep the cost sane — classification calls go to Haiku, the long-form answer stays on Opus:
+Pick one of three providers with `LLM_PROVIDER=anthropic | gemini | grok`. Each has a default model (long-form tasks) and a relation model (high-volume classification):
 
-| Env                      | Default               | Used by                                                                 |
-|--------------------------|-----------------------|-------------------------------------------------------------------------|
-| `CLAUDE_MODEL`           | `claude-opus-4-7`     | RAG answer, competitor discovery, head-to-head comparison.              |
-| `CLAUDE_MODEL_RELATION`  | `claude-haiku-4-5`    | N·(N−1)/2 pairwise relation classifications per doc, sentiment scoring. |
-| `EMBEDDING_MODEL`        | `text-embedding-3-small` | FAISS embeddings (OpenAI).                                           |
+| Provider    | Default model                       | Relation model                        | Env keys                                            |
+|-------------|-------------------------------------|---------------------------------------|-----------------------------------------------------|
+| `anthropic` | `CLAUDE_MODEL=claude-opus-4-7`      | `CLAUDE_MODEL_RELATION=claude-haiku-4-5` | `ANTHROPIC_API_KEY`                              |
+| `gemini`    | `GEMINI_MODEL=gemini-2.5-pro`       | `GEMINI_MODEL_RELATION=gemini-2.5-flash` | `GEMINI_API_KEY`                                 |
+| `grok`      | `GROK_MODEL=grok-4`                 | `GROK_MODEL_RELATION=grok-3-mini`     | `GROK_API_KEY`                                      |
+
+Anthropic keeps full fidelity (strict JSON schemas + adaptive thinking). Gemini and Grok get best-effort equivalents (JSON mime / `json_object` mode with the schema passed as a system-prompt hint, and provider-native reasoning toggles where supported).
+
+Embeddings always go through OpenAI — `OPENAI_API_KEY` and `EMBEDDING_MODEL=text-embedding-3-small` (default) are required regardless of `LLM_PROVIDER`. The adapter lives in `app/llm/`; no call site imports the Anthropic SDK directly.
 
 ## Architecture at a glance
 

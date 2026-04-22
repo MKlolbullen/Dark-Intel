@@ -11,12 +11,12 @@ from __future__ import annotations
 import json
 from collections import OrderedDict
 
-import anthropic
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 
 from ..config import Config
+from ..llm import get_default_client
 from ..models import (
     Analysis,
     Session,
@@ -25,8 +25,6 @@ from ..models import (
     list_chat_turns,
     load_analysis_sources,
 )
-
-_anthropic = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
 
 # LRU cache of (analysis_id -> FAISS retriever). Bounded to avoid holding
 # too many embeddings in memory at once. FAISS indexes are cheap to rebuild.
@@ -148,14 +146,12 @@ def answer_followup(analysis_id: int, question: str) -> tuple[str, list[str]]:
     user_parts.append("Answer (cite with [n]):")
     user = "".join(user_parts)
 
-    response = _anthropic.messages.create(
-        model=Config.CLAUDE_MODEL,
-        max_tokens=4096,
-        thinking={"type": "adaptive"},
+    answer = get_default_client().complete(
         system=_SYSTEM,
-        messages=[{"role": "user", "content": user}],
-    )
-    answer = next((b.text for b in response.content if b.type == "text"), "").strip()
+        user=user,
+        max_tokens=4096,
+        thinking=True,
+    ).strip()
     source_urls = [d.metadata.get("source", "") for d in retrieved]
     add_chat_turn(
         analysis_id=analysis_id,

@@ -1,10 +1,8 @@
-import anthropic
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
 from ..config import Config
-
-_anthropic = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+from ..llm import get_default_client
 
 _SYSTEM = (
     "You are an OSINT analyst. Answer the user's question using only the numbered "
@@ -21,7 +19,7 @@ def _format_context(docs):
 
 
 class RagChain:
-    """FAISS retrieval (OpenAI embeddings) + answer generation (Anthropic)."""
+    """FAISS retrieval (OpenAI embeddings) + answer generation (active LLM provider)."""
 
     def __init__(self, documents):
         embeddings = OpenAIEmbeddings(
@@ -39,15 +37,11 @@ class RagChain:
             f"Question: {question}\n\n"
             f"Answer (cite with [n]):"
         )
-        response = _anthropic.messages.create(
-            model=Config.CLAUDE_MODEL,
-            max_tokens=4096,
-            thinking={"type": "adaptive"},
+        answer = get_default_client().complete(
             system=_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        answer = next(
-            (b.text for b in response.content if b.type == "text"), ""
+            user=prompt,
+            max_tokens=4096,
+            thinking=True,
         )
         return {"result": answer.strip(), "source_documents": source_documents}
 

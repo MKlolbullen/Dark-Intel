@@ -1,4 +1,4 @@
-"""Generate a structured head-to-head comparison table via Claude Opus.
+"""Generate a structured head-to-head comparison table via the active LLM.
 
 Inputs: the target business, the resolved competitors, and the full set
 of Documents fetched during this analysis. We group docs by who they're
@@ -9,15 +9,10 @@ Analysis.comparison_json and rendered as a table in the dashboard.
 
 from __future__ import annotations
 
-import json
 from typing import Iterable
 
-import anthropic
-
-from ..config import Config
+from ..llm import get_default_client
 from ..scrapers.base import Competitor
-
-_client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
 
 # Keep context per group bounded so 5+ competitors still fit comfortably
 # inside the Opus 4.7 context window without ballooning cost.
@@ -142,22 +137,13 @@ def generate_comparison(
         f"Labeled source excerpts:\n\n{context}"
     )
 
-    try:
-        response = _client.messages.create(
-            model=Config.CLAUDE_MODEL,
-            max_tokens=4096,
-            thinking={"type": "adaptive"},
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": user}],
-            output_config={"format": {"type": "json_schema", "schema": _schema(keys)}},
-        )
-    except Exception:
+    data = get_default_client().complete_json(
+        system=_SYSTEM,
+        user=user,
+        schema=_schema(keys),
+        max_tokens=4096,
+        thinking=True,
+    )
+    if not data:
         return None
-
-    text = next((b.text for b in response.content if b.type == "text"), "").strip()
-    try:
-        data = json.loads(text)
-    except Exception:
-        return None
-
     return {"attributes": attributes, "rows": data.get("rows", [])}

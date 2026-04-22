@@ -1,8 +1,4 @@
-import anthropic
-
-from ..config import Config
-
-_client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
+from ..llm import get_relation_client
 
 _OPTIONS = (
     "acquired_by, partner_of, competitor_of, supplies, "
@@ -22,15 +18,12 @@ async def infer_relation_async(text: str, entity1: str, entity2: str) -> str:
         f"Article excerpt:\n{text[:2000]}"
     )
     try:
-        response = await _client.messages.create(
-            model=Config.CLAUDE_MODEL_RELATION,
-            max_tokens=32,
+        label = await get_relation_client().acomplete(
             system=_SYSTEM,
-            messages=[{"role": "user", "content": user}],
+            user=user,
+            max_tokens=32,
         )
-        label = next(
-            (b.text for b in response.content if b.type == "text"), ""
-        ).strip().lower()
-        return label if label in _VALID else "mentions"
     except Exception:
         return "mentions"
+    label = label.strip().lower()
+    return label if label in _VALID else "mentions"

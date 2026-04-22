@@ -55,16 +55,28 @@ Dark-Intel is a business-intelligence pipeline with two front ends over the same
 
 Migrations are intentionally trivial: at import time `_migrate()` walks a list of `(table, column, sql_type)` tuples and runs `ALTER TABLE ADD COLUMN` for any column that isn't there yet. Existing entries cover `edge.analysis_id`, `analysis.competitors`, and `source.competitor`. Anything more involved (renames, type changes) needs a one-shot script — there is no Alembic.
 
-### Two LLM tiers
+### LLM provider abstraction
 
-Two separate model env vars to keep the cost sane:
+Every chat/completion call goes through `app/llm/` — the direct Anthropic SDK is confined to `app/llm/anthropic_client.py`. The active provider is picked once per process from `LLM_PROVIDER` (one of `anthropic` | `gemini` | `grok`), and each provider has a matching default + relation model env var (`CLAUDE_MODEL` / `GEMINI_MODEL` / `GROK_MODEL` and `_RELATION` counterparts). The factory is lazy — provider-specific imports don't fire until the first call, so missing SDK deps for an unused provider aren't fatal at startup.
 
-| Env                        | Default               | Used by                                   |
-|----------------------------|-----------------------|-------------------------------------------|
-| `CLAUDE_MODEL`             | `claude-opus-4-7`     | RAG answer (`app/pipeline/rag.py`)        |
-| `CLAUDE_MODEL_RELATION`    | `claude-haiku-4-5`    | Pairwise relations (`edge_infer.py`) and lazy sentiment scoring (`analysis/sentiment.py`) |
+Two tiers, unchanged in intent:
+
+| Usage                                                          | Client                  | Defaults per provider |
+|----------------------------------------------------------------|-------------------------|-----------------------|
+| RAG answer, competitor discovery, comparison, follow-up Q&A    | `get_default_client()`  | `claude-opus-4-7` / `gemini-2.5-pro` / `grok-4` |
+| Pairwise relations, sentiment                                  | `get_relation_client()` | `claude-haiku-4-5` / `gemini-2.5-flash` / `grok-3-mini` |
+
+Adapter fidelity (`LLMClient.complete_json`, `acomplete_json`):
+
+- **Anthropic** — strict JSON schema via `output_config.format`, adaptive thinking via `thinking: {"type": "adaptive"}`.
+- **Gemini** — `response_mime_type="application/json"` + `response_schema` best-effort, schema echoed in the system prompt as a fallback. `thinking_config(thinking_budget=-1)` when thinking is requested.
+- **Grok** — OpenAI SDK pointed at `https://api.x.ai/v1`, `response_format={"type": "json_object"}`, schema echoed in the system prompt. `reasoning_effort="high"` when thinking is requested (adapter retries without if the model rejects it).
+
+All three return parsed JSON or `None` on any failure; callers (`comparison.py`, `competitors.py`, `sentiment.py`) already handle the `None` branch.
 
 Sentiment scoring runs on first view of `/dashboard?analysis_id=N` — `score_unscored_sync` capped at `MAX_PER_RUN=200` mentions, `CONCURRENCY=8`, results cached on `Mention.sentiment_score`. Subsequent loads of the same analysis are instant.
+
+Embeddings always go to OpenAI (`text-embedding-3-small`) regardless of `LLM_PROVIDER` — `OPENAI_API_KEY` is required in every deployment.
 
 ### Frontends
 
