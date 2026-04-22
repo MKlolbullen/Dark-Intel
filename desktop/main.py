@@ -79,6 +79,18 @@ class MainWindow(QMainWindow):
         self._question.setFixedHeight(120)
         layout.addWidget(self._question)
 
+        layout.addWidget(QLabel("<b>Competitors (optional)</b>"))
+        self._competitors = QLineEdit()
+        self._competitors.setPlaceholderText("OpenAI (openai.com), Google (google.com)")
+        layout.addWidget(self._competitors)
+        hint = QLabel(
+            '<span style="color:#6b7280; font-size:11px">'
+            "Leave blank to auto-discover with Claude. Format: Name (domain), comma-separated."
+            "</span>"
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
         channel_box = QGroupBox("Sources")
         channel_layout = QVBoxLayout(channel_box)
         self._channels: dict[str, QCheckBox] = {}
@@ -108,6 +120,9 @@ class MainWindow(QMainWindow):
 
         self._dashboard_view = QWebEngineView()
         tabs.addTab(self._dashboard_view, "Dashboard")
+
+        self._chat_view = QWebEngineView()
+        tabs.addTab(self._chat_view, "Ask")
         return tabs
 
     # ---- actions ------------------------------------------------------
@@ -123,9 +138,12 @@ class MainWindow(QMainWindow):
         if not channels:
             QMessageBox.warning(self, "No sources", "Pick at least one source channel.")
             return
+        competitors_input = self._competitors.text().strip()
 
         self._set_running(True)
-        self._worker = PipelineWorker(business, industry, question, channels)
+        self._worker = PipelineWorker(
+            business, industry, question, channels, competitors_input
+        )
         self._worker.finished_ok.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
@@ -137,6 +155,7 @@ class MainWindow(QMainWindow):
         self._results.setHtml(html)
         self._graph_view.setUrl(QUrl(f"{self._server.url}/graph?analysis_id={analysis_id}"))
         self._dashboard_view.setUrl(QUrl(f"{self._server.url}/dashboard?analysis_id={analysis_id}"))
+        self._chat_view.setUrl(QUrl(f"{self._server.url}/chat?analysis_id={analysis_id}"))
 
     def _on_failed(self, message: str) -> None:
         self._set_running(False)
@@ -146,7 +165,7 @@ class MainWindow(QMainWindow):
     def _set_running(self, running: bool) -> None:
         self._run.setEnabled(not running)
         self._run.setText("Running…" if running else "Run analysis")
-        for w in (self._business, self._industry, self._question):
+        for w in (self._business, self._industry, self._question, self._competitors):
             w.setEnabled(not running)
         for cb in self._channels.values():
             cb.setEnabled(not running)

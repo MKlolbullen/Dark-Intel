@@ -41,6 +41,8 @@ class Analysis(SQLModel, table=True):
     question: str
     model: str
     summary: str | None = None
+    competitors: str | None = None  # JSON: [{"name": "...", "domain": "..."}, ...]
+    comparison_json: str | None = None  # JSON: structured head-to-head table
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 
 
@@ -49,9 +51,11 @@ class Source(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     url: str = Field(index=True, unique=True)
-    kind: str  # news / reddit / hn / linkedin
+    kind: str  # news / reddit / hn / linkedin / x / reviews / competitor
     scraper: str
     title: str | None = None
+    competitor: str | None = Field(default=None, index=True)  # set on competitor pages
+    text: str | None = None  # cleaned page text, used by follow-up Q&A
     fetched_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -63,24 +67,46 @@ class Mention(SQLModel, table=True):
     source_id: int = Field(foreign_key="source.id", index=True)
     node_id: int = Field(foreign_key="node.id", index=True)
     snippet: str | None = None
-    sentiment_score: float | None = None  # populated in Phase 4
+    sentiment_score: float | None = None  # populated lazily on dashboard load
+
+
+class ChatTurn(SQLModel, table=True):
+    """A single question + answer in a follow-up chat scoped to an analysis."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    analysis_id: int = Field(foreign_key="analysis.id", index=True)
+    question: str
+    answer: str
+    sources_json: str | None = None  # JSON array of cited source URLs
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
 
 
 def _migrate() -> None:
     """Add columns we introduced after the initial schema.
 
     SQLModel.metadata.create_all is idempotent for tables but never alters
-    existing ones. SQLite supports ADD COLUMN, so this is safe to run on
-    every import for both fresh and existing databases.
+    existing ones. SQLite supports ADD COLUMN, so this runs on every import
+    for both fresh and existing databases.
     """
 
     inspector = inspect(engine)
-    if "edge" not in inspector.get_table_names():
-        return  # fresh DB; create_all below covers it
-    cols = {c["name"] for c in inspector.get_columns("edge")}
-    if "analysis_id" not in cols:
+    existing_tables = set(inspector.get_table_names())
+
+    additions: list[tuple[str, str, str]] = [
+        ("edge", "analysis_id", "INTEGER"),
+        ("analysis", "competitors", "TEXT"),
+        ("analysis", "comparison_json", "TEXT"),
+        ("source", "competitor", "VARCHAR"),
+        ("source", "text", "TEXT"),
+    ]
+    for table_name, col_name, sql_type in additions:
+        if table_name not in existing_tables:
+            continue
+        cols = {c["name"] for c in inspector.get_columns(table_name)}
+        if col_name in cols:
+            continue
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE edge ADD COLUMN analysis_id INTEGER"))
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {sql_type}"))
             conn.commit()
 
 
@@ -122,13 +148,20 @@ def add_edge(
         s.commit()
 
 
-def create_analysis(business_name: str, industry: str, question: str, model: str) -> int:
+def create_analysis(
+    business_name: str,
+    industry: str,
+    question: str,
+    model: str,
+    competitors_json: str | None = None,
+) -> int:
     with Session(engine) as s:
         row = Analysis(
             business_name=business_name,
             industry=industry,
             question=question,
             model=model,
+            competitors=competitors_json,
         )
         s.add(row)
         s.commit()
@@ -146,11 +179,37 @@ def update_analysis_summary(analysis_id: int, summary: str) -> None:
         s.commit()
 
 
-def upsert_source(url: str, kind: str, scraper: str, title: str | None = None) -> int:
+def update_analysis_comparison(analysis_id: int, comparison_json: str) -> None:
+    with Session(engine) as s:
+        row = s.get(Analysis, analysis_id)
+        if row is None:
+            return
+        row.comparison_json = comparison_json
+        s.add(row)
+        s.commit()
+
+
+def upsert_source(
+    url: str,
+    kind: str,
+    scraper: str,
+    title: str | None = None,
+    competitor: str | None = None,
+    text: str | None = None,
+) -> int:
+    """Insert a Source row if missing. competitor and text are only set on insert."""
+
     with Session(engine) as s:
         row = s.exec(select(Source).where(Source.url == url)).first()
         if not row:
-            row = Source(url=url, kind=kind, scraper=scraper, title=title)
+            row = Source(
+                url=url,
+                kind=kind,
+                scraper=scraper,
+                title=title,
+                competitor=competitor,
+                text=text,
+            )
             s.add(row)
             s.commit()
             s.refresh(row)
@@ -173,3 +232,48 @@ def add_mention(
             )
         )
         s.commit()
+
+
+def add_chat_turn(
+    analysis_id: int,
+    question: str,
+    answer: str,
+    sources_json: str | None = None,
+) -> int:
+    with Session(engine) as s:
+        row = ChatTurn(
+            analysis_id=analysis_id,
+            question=question,
+            answer=answer,
+            sources_json=sources_json,
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        return row.id
+
+
+def list_chat_turns(analysis_id: int, limit: int | None = None) -> list[ChatTurn]:
+    with Session(engine) as s:
+        stmt = (
+            select(ChatTurn)
+            .where(ChatTurn.analysis_id == analysis_id)
+            .order_by(ChatTurn.created_at.asc())
+        )
+        rows = s.exec(stmt).all()
+    if limit is None:
+        return rows
+    return rows[-limit:]
+
+
+def load_analysis_sources(analysis_id: int) -> list[Source]:
+    """Every Source referenced by this analysis's Mentions. Used to rebuild FAISS."""
+
+    with Session(engine) as s:
+        stmt = (
+            select(Source)
+            .join(Mention, Mention.source_id == Source.id)
+            .where(Mention.analysis_id == analysis_id)
+            .distinct()
+        )
+        return s.exec(stmt).all()

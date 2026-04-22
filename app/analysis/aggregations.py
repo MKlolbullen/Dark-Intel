@@ -108,6 +108,95 @@ def mentions_over_time(analysis_id: int) -> dict[str, list]:
     return {"days": days, "counts": [buckets[d] for d in days]}
 
 
+def coverage_per_competitor(analysis_id: int) -> dict[str, dict[str, int]]:
+    """For each competitor, count distinct sources scraped and mentions extracted."""
+
+    with Session(engine) as s:
+        rows = s.exec(
+            select(Source.competitor, Source.id, Mention.id)
+            .join(Mention, Mention.source_id == Source.id)
+            .where(Mention.analysis_id == analysis_id)
+            .where(Source.competitor.is_not(None))
+        ).all()
+    sources_per: defaultdict[str, set] = defaultdict(set)
+    mentions_per: Counter[str] = Counter()
+    for competitor, source_id, _ in rows:
+        sources_per[competitor].add(source_id)
+        mentions_per[competitor] += 1
+    return {
+        c: {"sources": len(sources_per[c]), "mentions": mentions_per[c]}
+        for c in sorted(sources_per)
+    }
+
+
+def avg_sentiment_per_competitor(analysis_id: int) -> dict[str, float]:
+    """Average sentiment of mentions extracted from each competitor's own pages.
+
+    Useful as a rough proxy for how favorably each competitor describes
+    the broader landscape (including the target business).
+    """
+
+    with Session(engine) as s:
+        rows = s.exec(
+            select(Source.competitor, Mention.sentiment_score)
+            .join(Mention, Mention.source_id == Source.id)
+            .where(Mention.analysis_id == analysis_id)
+            .where(Source.competitor.is_not(None))
+            .where(Mention.sentiment_score.is_not(None))
+        ).all()
+    sums: defaultdict[str, float] = defaultdict(float)
+    counts: defaultdict[str, int] = defaultdict(int)
+    for competitor, score in rows:
+        sums[competitor] += score
+        counts[competitor] += 1
+    return {c: sums[c] / counts[c] for c in sums if counts[c]}
+
+
+def top_entities_per_competitor(
+    analysis_id: int, limit_per_competitor: int = 10
+) -> dict[str, list]:
+    """Heatmap data: rows=entities, cols=competitors, cell=mention count.
+
+    Returns `{competitors: [...], entities: [...], matrix: [[count, ...], ...]}`
+    where matrix[i][j] is the mention count of entities[i] on competitors[j]'s pages.
+    """
+
+    with Session(engine) as s:
+        rows = s.exec(
+            select(Source.competitor, Node.name)
+            .join(Mention, Mention.source_id == Source.id)
+            .join(Node, Mention.node_id == Node.id)
+            .where(Mention.analysis_id == analysis_id)
+            .where(Source.competitor.is_not(None))
+        ).all()
+
+    by_competitor: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    for competitor, entity in rows:
+        if entity and entity.startswith(("http://", "https://")):
+            continue  # skip PAGE nodes
+        by_competitor[competitor][entity] += 1
+
+    if not by_competitor:
+        return {"competitors": [], "entities": [], "matrix": []}
+
+    competitors = sorted(by_competitor)
+    top_entities_set: set[str] = set()
+    for comp in competitors:
+        for ent, _ in by_competitor[comp].most_common(limit_per_competitor):
+            top_entities_set.add(ent)
+
+    totals = Counter()
+    for ent in top_entities_set:
+        for comp in competitors:
+            totals[ent] += by_competitor[comp].get(ent, 0)
+    entities = [ent for ent, _ in totals.most_common()]
+    matrix = [
+        [by_competitor[comp].get(ent, 0) for comp in competitors]
+        for ent in entities
+    ]
+    return {"competitors": competitors, "entities": entities, "matrix": matrix}
+
+
 def all_charts(analysis_id: int) -> dict:
     return {
         "source_mix": source_mix(analysis_id),
@@ -115,4 +204,7 @@ def all_charts(analysis_id: int) -> dict:
         "avg_sentiment_by_kind": avg_sentiment_by_kind(analysis_id),
         "sentiment_distribution": sentiment_distribution(analysis_id),
         "mentions_over_time": mentions_over_time(analysis_id),
+        "coverage_per_competitor": coverage_per_competitor(analysis_id),
+        "avg_sentiment_per_competitor": avg_sentiment_per_competitor(analysis_id),
+        "top_entities_per_competitor": top_entities_per_competitor(analysis_id),
     }

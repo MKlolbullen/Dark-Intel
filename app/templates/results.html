@@ -30,6 +30,9 @@
   {% endif %}
 
   <p class="pt-4 space-x-4">
+    <a href="{{ url_for('main.chat', analysis_id=analysis_id) }}" class="text-indigo-400 underline text-sm">
+      Ask a follow-up &rarr;
+    </a>
     <a href="{{ url_for('main.dashboard', analysis_id=analysis_id) }}" class="text-indigo-400 underline text-sm">
       Open dashboard &rarr;
     </a>

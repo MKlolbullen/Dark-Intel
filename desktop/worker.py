@@ -15,9 +15,10 @@ class PipelineWorker(QThread):
         industry: str,
         question: str,
         channels: list[str],
+        competitors_input: str = "",
     ):
         super().__init__()
-        self._args = (business_name, industry, question, channels)
+        self._args = (business_name, industry, question, channels, competitors_input)
 
     def run(self) -> None:
         # Import inside the thread so PySide6 doesn't need spaCy/anthropic at startup
