@@ -1,23 +1,36 @@
-import openai
-import asyncio
-from functools import lru_cache
+import anthropic
 
-@lru_cache(maxsize=5000)
-def _cache_key(text, a, b):
-    return f"{a.lower()}::{b.lower()}"
+from ..config import Config
+
+_client = anthropic.AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
+
+_OPTIONS = (
+    "acquired_by, partner_of, competitor_of, supplies, "
+    "fired_by, hires, announced_layoffs, no_relation"
+)
+_VALID = {opt.strip() for opt in _OPTIONS.split(",")}
+_SYSTEM = (
+    "You classify the relationship between two entities mentioned in a news article. "
+    f"Respond with exactly one of these labels and no other text: {_OPTIONS}."
+)
+
 
 async def infer_relation_async(text: str, entity1: str, entity2: str) -> str:
-    prompt = (
-        f"In the text below, what is the most likely relation between '{entity1}' and '{entity2}'?\n"
-        f"Options: acquired_by, partner_of, competitor_of, supplies, fired_by, hires, announced_layoffs, no_relation\n\n"
-        f"TEXT:\n{text[:2000]}"
+    user = (
+        f"Entity 1: {entity1}\n"
+        f"Entity 2: {entity2}\n\n"
+        f"Article excerpt:\n{text[:2000]}"
     )
     try:
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
+        response = await _client.messages.create(
+            model=Config.CLAUDE_MODEL,
+            max_tokens=32,
+            system=_SYSTEM,
+            messages=[{"role": "user", "content": user}],
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
+        label = next(
+            (b.text for b in response.content if b.type == "text"), ""
+        ).strip().lower()
+        return label if label in _VALID else "mentions"
+    except Exception:
         return "mentions"

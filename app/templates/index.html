@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block body %}
+<main class="max-w-2xl mx-auto p-8 space-y-6">
+  <header class="space-y-2">
+    <h1 class="text-3xl font-bold">Dark-Intel</h1>
+    <p class="text-sm text-gray-400">
+      Ask an intelligence question. The pipeline scrapes the relevant sources,
+      builds an entity graph, and answers via Claude with citations.
+    </p>
+  </header>
+
+  <form method="post" class="space-y-3">
+    <textarea name="question" rows="4" required
+      class="w-full p-3 rounded bg-gray-800 dark:bg-gray-800 text-gray-100"
+      placeholder="e.g. Who are the main competitors of OpenAI in fintech?"></textarea>
+    <div class="flex justify-between items-center">
+      <a href="{{ url_for('main.graph') }}" class="text-indigo-400 underline text-sm">
+        Open knowledge graph
+      </a>
+      <button class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded">
+        Analyze
+      </button>
+    </div>
+  </form>
+</main>
+{% endblock %}
