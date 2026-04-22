@@ -1,9 +1,10 @@
 import asyncio
 import json
-from typing import Sequence
+import logging
+from typing import Callable, Sequence
 
-from ..config import Config
 from ..analysis.comparison import generate_comparison
+from ..config import Config
 from ..intel.competitors import discover_competitors, parse_user_competitors
 from ..models import (
     add_edge,
@@ -19,6 +20,19 @@ from .edge_infer import infer_relation_async
 from .entities import extract_entities
 from .rag import build_qa_chain
 from .source_selection import gather_documents
+
+logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[str], None]
+
+
+def _notify(progress: ProgressCallback | None, stage: str) -> None:
+    if progress is None:
+        return
+    try:
+        progress(stage)
+    except Exception:
+        logger.exception("progress callback raised")
 
 
 def _snippet_for(text: str, entity: str, span: int = 160) -> str:
@@ -90,9 +104,12 @@ async def run_pipeline_async(
     question: str,
     channels: Sequence[str] | None = None,
     competitors_input: str = "",
+    progress: ProgressCallback | None = None,
 ):
     chans = list(channels) if channels else list(Config.DEFAULT_CHANNELS)
+    _notify(progress, "resolving_competitors")
     competitors = await _resolve_competitors(business_name, industry, chans, competitors_input)
+    logger.info("resolved %d competitor(s)", len(competitors))
 
     competitors_json = (
         json.dumps([{"name": c.name, "domain": c.domain} for c in competitors])
@@ -103,19 +120,24 @@ async def run_pipeline_async(
         business_name=business_name,
         industry=industry,
         question=question,
-        model=Config.CLAUDE_MODEL,
+        model=Config.default_model(),
         competitors_json=competitors_json,
     )
+    logger.info("created analysis #%d for %s", analysis_id, business_name)
 
-    docs = await gather_documents(
+    _notify(progress, "scraping")
+    docs, source_counts = await gather_documents(
         business_name, industry, question, chans, competitors=competitors
     )
     if not docs:
         update_analysis_summary(analysis_id, "No data retrieved.")
-        return analysis_id, "No data retrieved.", {}
+        logger.warning("analysis #%d produced no documents", analysis_id)
+        return analysis_id, "No data retrieved.", {}, source_counts
 
+    _notify(progress, "processing")
     await asyncio.gather(*[process_doc(doc, analysis_id) for doc in docs])
 
+    _notify(progress, "answering")
     chain = build_qa_chain(docs)
     competitors_line = (
         f"\nCompetitors: {', '.join(c.name for c in competitors)}" if competitors else ""
@@ -136,11 +158,15 @@ async def run_pipeline_async(
     update_analysis_summary(analysis_id, answer)
 
     if competitors:
+        _notify(progress, "comparing")
         comparison = generate_comparison(business_name, list(competitors), docs)
         if comparison:
             update_analysis_comparison(analysis_id, json.dumps(comparison))
+        else:
+            logger.info("comparison generation returned no data for #%d", analysis_id)
 
-    return analysis_id, answer, details
+    _notify(progress, "done")
+    return analysis_id, answer, details, source_counts
 
 
 def run_pipeline(
@@ -149,7 +175,10 @@ def run_pipeline(
     question: str,
     channels: Sequence[str] | None = None,
     competitors_input: str = "",
+    progress: ProgressCallback | None = None,
 ):
     return asyncio.run(
-        run_pipeline_async(business_name, industry, question, channels, competitors_input)
+        run_pipeline_async(
+            business_name, industry, question, channels, competitors_input, progress
+        )
     )

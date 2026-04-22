@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from openai import AsyncOpenAI, OpenAI
 
 from .base import LLMClient
+
+logger = logging.getLogger(__name__)
 
 GROK_BASE_URL = "https://api.x.ai/v1"
 _SCHEMA_HINT = (
@@ -97,9 +100,16 @@ class GrokAdapter(LLMClient):
                 thinking,
                 {"type": "json_object"},
             )
-            text = (response.choices[0].message.content or "").strip()
-            return json.loads(text) if text else None
         except Exception:
+            logger.exception("grok chat.completions failed")
+            return None
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception as exc:
+            logger.warning("grok returned non-JSON output (%s): %r", exc, text[:200])
             return None
 
     async def acomplete_json(
@@ -113,7 +123,14 @@ class GrokAdapter(LLMClient):
                 thinking,
                 {"type": "json_object"},
             )
-            text = (response.choices[0].message.content or "").strip()
-            return json.loads(text) if text else None
         except Exception:
+            logger.exception("grok chat.completions (async) failed")
+            return None
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception as exc:
+            logger.warning("grok returned non-JSON output (%s): %r", exc, text[:200])
             return None
