@@ -1,10 +1,13 @@
+import json as _json
+
 from flask import Blueprint, abort, jsonify, render_template, request
 from sqlmodel import Session, select
 
 from .analysis import aggregations, sentiment
 from .config import Config
-from .models import Analysis, Edge, Node, engine
+from .models import Analysis, Edge, Node, engine, list_chat_turns
 from .pipeline import run_pipeline
+from .pipeline.qa import answer_followup
 from .scrapers import REGISTRY
 
 main_bp = Blueprint("main", __name__)
@@ -48,8 +51,6 @@ def graph():
 
 @main_bp.route("/dashboard")
 def dashboard():
-    import json as _json
-
     analysis_id = request.args.get("analysis_id", type=int)
     if analysis_id is None:
         abort(400, "analysis_id is required")
@@ -93,6 +94,43 @@ def api_analysis_charts(analysis_id: int):
             abort(404)
     sentiment.score_unscored_sync(analysis_id)
     return jsonify(aggregations.all_charts(analysis_id))
+
+
+@main_bp.route("/chat")
+def chat():
+    analysis_id = request.args.get("analysis_id", type=int)
+    if analysis_id is None:
+        abort(400, "analysis_id is required")
+    with Session(engine) as s:
+        analysis = s.get(Analysis, analysis_id)
+    if analysis is None:
+        abort(404)
+    turns = list_chat_turns(analysis_id)
+    # Surface cited source URLs as already-parsed lists for the template
+    turn_views = []
+    for t in turns:
+        try:
+            sources = _json.loads(t.sources_json) if t.sources_json else []
+        except Exception:
+            sources = []
+        turn_views.append({"question": t.question, "answer": t.answer, "sources": sources})
+    return render_template("chat.html", analysis=analysis, turns=turn_views)
+
+
+@main_bp.route("/api/analysis/<int:analysis_id>/chat", methods=["POST"])
+def api_analysis_chat(analysis_id: int):
+    payload = request.get_json(silent=True) or {}
+    question = (payload.get("question") or "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    with Session(engine) as s:
+        if s.get(Analysis, analysis_id) is None:
+            abort(404)
+    try:
+        answer, sources = answer_followup(analysis_id, question)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"answer": answer, "sources": sources})
 
 
 @main_bp.route("/api/nodes")

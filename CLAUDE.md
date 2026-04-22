@@ -73,13 +73,14 @@ Sentiment scoring runs on first view of `/dashboard?analysis_id=N` — `score_un
 - `GET /` and `POST /` — analysis form and result page (`templates/index.html` + `templates/results.html`).
 - `GET /graph?analysis_id=N` — D3 force-directed graph; `static/js/d3graph.js` reads `analysis_id` from the URL and forwards it to the API.
 - `GET /dashboard?analysis_id=N` — Plotly dashboard (`templates/dashboard.html` + `static/js/dashboard.js`). Pulls everything from `/api/analysis/<id>/charts`.
-- `GET /api/analyses`, `/api/nodes?analysis_id=...`, `/api/edges?analysis_id=...`, `/api/analysis/<id>/charts`.
+- `GET /chat?analysis_id=N` — follow-up Q&A thread for a completed analysis (`templates/chat.html`). JS fetch posts to `/api/analysis/<id>/chat`; see `app/pipeline/qa.py`.
+- `GET /api/analyses`, `/api/nodes?analysis_id=...`, `/api/edges?analysis_id=...`, `/api/analysis/<id>/charts`, `POST /api/analysis/<id>/chat`.
 
 `desktop.py` boots the PySide6 main window (`desktop/main.py`):
 
 - `desktop/server.py:FlaskServer` `subprocess.Popen`s `create_app().run(...)` on a free port, polls `/api/analyses` until ready, registers `atexit` cleanup. The Qt app and the embedded server run in different processes against the same SQLite file.
 - `desktop/worker.py:PipelineWorker` is a `QThread` that runs `run_pipeline` (which itself calls `asyncio.run` in the worker thread — safe because there's no Qt event loop in there). Emits `finished_ok(analysis_id, answer, details)` on success.
-- `MainWindow` has a sidebar form (one checkbox per `REGISTRY` entry) and three tabs: Results (`QTextBrowser`), Graph (`QWebEngineView` → embedded Flask `/graph`), Dashboard (`QWebEngineView` → embedded Flask `/dashboard`). The Graph and Dashboard tabs are reused web views, not reimplementations.
+- `MainWindow` has a sidebar form (one checkbox per `REGISTRY` entry) and four tabs: Results (`QTextBrowser`), Graph (`QWebEngineView` → embedded Flask `/graph`), Dashboard (`QWebEngineView` → `/dashboard`), Ask (`QWebEngineView` → `/chat`). The tabs after Results are reused web views, not reimplementations.
 
 ### Scraper plugin architecture (`app/scrapers/`)
 
@@ -95,6 +96,10 @@ LinkedIn note: `linkedin.py` uses the official LinkedIn REST API v2 (`vanityName
 Competitor channel: `competitor` is on by default. With no user input it auto-discovers via `app/intel/competitors.discover_competitors` (Claude Opus + JSON schema). With user input (`Name (domain), Name2 (domain2)`) it skips discovery. Either way the resolved list is persisted on `Analysis.competitors`, every fetched competitor page becomes a `Source` tagged with `Source.competitor`, and the dashboard adds three charts (`coverage_per_competitor`, `avg_sentiment_per_competitor`, `top_entities_per_competitor` heatmap) on top of the existing five. The RAG prompt is augmented to ask Claude to contrast the target business against each named competitor.
 
 After the RAG answer, the pipeline also calls `app/analysis/comparison.generate_comparison` — a second Claude Opus request with `output_config.format` enforcing a structured head-to-head schema (`product_focus`, `pricing`, `target_market`, `key_differentiator`, `recent_moves`). Documents are grouped by who they're about (via `Source.competitor` first, URL domain / text fallback second), each group is capped at `PER_GROUP_DOCS=6` × `PER_DOC_CHARS=1500` for context budget, and the model is told to use `"unknown"` when the excerpts don't support a value. The JSON result is stored on `Analysis.comparison_json` and rendered as a server-side HTML table at the top of the dashboard.
+
+### Follow-up Q&A (`app/pipeline/qa.py`)
+
+Each completed analysis has a chat thread at `/chat?analysis_id=N`. `process_doc` writes the full cleaned `doc.page_content` to `Source.text` on first upsert, so the follow-up path can re-retrieve without re-scraping. `qa.answer_followup` rebuilds a FAISS index from `Source.text` the first time an analysis is asked a follow-up and caches it in a module-level LRU keyed by `analysis_id` (size 8). Each question pulls the top-8 chunks, appends the last 4 `ChatTurn`s as prior context, adds the stored competitor list to the prompt, and runs Claude Opus with adaptive thinking. The answer is persisted as a `ChatTurn` row. `qa.invalidate(analysis_id)` evicts the cache entry after re-running an analysis.
 
 ## Caveats worth flagging
 

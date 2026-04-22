@@ -14,6 +14,7 @@
   </div>
   <nav class="text-sm space-x-3">
     <a class="text-indigo-400 underline" href="{{ url_for('main.index') }}">New analysis</a>
+    <a class="text-indigo-400 underline" href="{{ url_for('main.chat', analysis_id=analysis.id) }}">Ask</a>
     <a class="text-indigo-400 underline" href="{{ url_for('main.graph', analysis_id=analysis.id) }}">Graph</a>
   </nav>
 </header>

@@ -1,0 +1,115 @@
+{% extends "base.html" %}{% block body %}
+<header class="border-b border-gray-800 bg-gray-900 p-4 flex justify-between items-baseline">
+  <div class="space-y-1">
+    <h1 class="text-xl font-bold">{{ analysis.business_name }}</h1>
+    <p class="text-sm text-gray-400">
+      Follow-up Q&amp;A · <span>{{ analysis.industry }}</span>
+      <span class="text-gray-600">·</span>
+      <span>analysis #{{ analysis.id }}</span>
+    </p>
+  </div>
+  <nav class="text-sm space-x-3">
+    <a class="text-indigo-400 underline" href="{{ url_for('main.index') }}">New analysis</a>
+    <a class="text-indigo-400 underline" href="{{ url_for('main.dashboard', analysis_id=analysis.id) }}">Dashboard</a>
+    <a class="text-indigo-400 underline" href="{{ url_for('main.graph', analysis_id=analysis.id) }}">Graph</a>
+  </nav>
+</header>
+
+<main class="max-w-3xl mx-auto p-4 space-y-4">
+  <p class="text-xs text-gray-500">
+    Asks Claude Opus 4.7 against the sources that were scraped when analysis #{{ analysis.id }}
+    ran — it won't fetch new data. Re-run the analysis for fresh sources.
+  </p>
+
+  <section id="thread" class="space-y-4">
+    {% for turn in turns %}
+      <article class="bg-gray-900 rounded p-4 space-y-2">
+        <p class="text-sm text-gray-400"><span class="uppercase tracking-wide text-xs">Question</span><br>{{ turn.question }}</p>
+        <p class="whitespace-pre-wrap text-gray-100">{{ turn.answer }}</p>
+        {% if turn.sources %}
+          <details class="text-xs text-gray-500">
+            <summary class="cursor-pointer">Sources ({{ turn.sources|length }})</summary>
+            <ol class="list-decimal list-inside space-y-0.5 mt-1">
+              {% for src in turn.sources %}<li><a class="text-indigo-400 underline" href="{{ src }}">{{ src }}</a></li>{% endfor %}
+            </ol>
+          </details>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+
+  <form id="askForm" class="bg-gray-900 rounded p-4 space-y-2 sticky bottom-4">
+    <label class="text-xs uppercase tracking-wide text-gray-400">Ask a follow-up</label>
+    <textarea id="question" rows="3" required
+      class="w-full p-2 rounded bg-gray-800 text-gray-100"
+      placeholder="e.g. How does our pricing compare with OpenAI's? What recent moves have our competitors made?"></textarea>
+    <div class="flex justify-between items-center">
+      <span id="status" class="text-xs text-gray-500"></span>
+      <button id="submit" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-sm">Ask</button>
+    </div>
+  </form>
+</main>
+
+<script>window.ANALYSIS_ID = {{ analysis.id }};</script>
+<script>
+(function () {
+  const form = document.getElementById("askForm");
+  const qa = document.getElementById("question");
+  const btn = document.getElementById("submit");
+  const status = document.getElementById("status");
+  const thread = document.getElementById("thread");
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function renderTurn(question, answer, sources) {
+    const srcHtml = (sources && sources.length)
+      ? `<details class="text-xs text-gray-500">
+           <summary class="cursor-pointer">Sources (${sources.length})</summary>
+           <ol class="list-decimal list-inside space-y-0.5 mt-1">
+             ${sources.map(s => `<li><a class="text-indigo-400 underline" href="${escapeHtml(s)}">${escapeHtml(s)}</a></li>`).join("")}
+           </ol>
+         </details>`
+      : "";
+    const el = document.createElement("article");
+    el.className = "bg-gray-900 rounded p-4 space-y-2";
+    el.innerHTML = `
+      <p class="text-sm text-gray-400"><span class="uppercase tracking-wide text-xs">Question</span><br>${escapeHtml(question)}</p>
+      <p class="whitespace-pre-wrap text-gray-100">${escapeHtml(answer)}</p>
+      ${srcHtml}`;
+    thread.appendChild(el);
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const question = qa.value.trim();
+    if (!question) return;
+    btn.disabled = true;
+    status.textContent = "Thinking…";
+    try {
+      const res = await fetch(`/api/analysis/${window.ANALYSIS_ID}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = `Error: ${data.error || res.statusText}`;
+        return;
+      }
+      renderTurn(question, data.answer, data.sources);
+      qa.value = "";
+      status.textContent = "";
+    } catch (err) {
+      status.textContent = `Network error: ${err}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

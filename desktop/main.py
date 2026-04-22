@@ -120,6 +120,9 @@ class MainWindow(QMainWindow):
 
         self._dashboard_view = QWebEngineView()
         tabs.addTab(self._dashboard_view, "Dashboard")
+
+        self._chat_view = QWebEngineView()
+        tabs.addTab(self._chat_view, "Ask")
         return tabs
 
     # ---- actions ------------------------------------------------------
@@ -152,6 +155,7 @@ class MainWindow(QMainWindow):
         self._results.setHtml(html)
         self._graph_view.setUrl(QUrl(f"{self._server.url}/graph?analysis_id={analysis_id}"))
         self._dashboard_view.setUrl(QUrl(f"{self._server.url}/dashboard?analysis_id={analysis_id}"))
+        self._chat_view.setUrl(QUrl(f"{self._server.url}/chat?analysis_id={analysis_id}"))
 
     def _on_failed(self, message: str) -> None:
         self._set_running(False)

@@ -40,6 +40,7 @@ async def process_doc(doc, analysis_id: int):
         scraper=kind,
         title=doc.metadata.get("title"),
         competitor=competitor,
+        text=doc.page_content,
     )
 
     entities = extract_entities(doc.page_content)

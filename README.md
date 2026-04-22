@@ -15,6 +15,7 @@ Two frontends over one SQLite store:
 - **RAG answer** — FAISS retrieval over the scraped corpus (OpenAI embeddings) + Claude Opus 4.7 with adaptive thinking. The prompt is augmented with the competitor list so the answer contrasts product / pricing / positioning.
 - **Head-to-head comparison table** — second Claude Opus pass with structured JSON output, persisted and rendered server-side. Columns: product focus, pricing, target market, key differentiator, recent moves.
 - **Plotly dashboard** — source mix, sentiment distribution, avg sentiment by channel, top entities, mentions over time, per-competitor coverage, per-competitor sentiment, top-entities-per-competitor heatmap.
+- **Follow-up Q&A** — each completed analysis has its own chat thread (`/chat?analysis_id=N`). Ask anything; Claude Opus answers from the same scraped corpus (rebuilt from `Source.text`, cached per analysis) with cited sources, and the thread is persisted so you can come back to it later.
 - **Lazy sentiment scoring** — first dashboard load of an analysis backfills sentiment via Claude Haiku, capped at 200 snippets, cached on `Mention.sentiment_score`.
 
 ## Quick start

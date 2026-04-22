@@ -55,6 +55,7 @@ class Source(SQLModel, table=True):
     scraper: str
     title: str | None = None
     competitor: str | None = Field(default=None, index=True)  # set on competitor pages
+    text: str | None = None  # cleaned page text, used by follow-up Q&A
     fetched_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -67,6 +68,17 @@ class Mention(SQLModel, table=True):
     node_id: int = Field(foreign_key="node.id", index=True)
     snippet: str | None = None
     sentiment_score: float | None = None  # populated lazily on dashboard load
+
+
+class ChatTurn(SQLModel, table=True):
+    """A single question + answer in a follow-up chat scoped to an analysis."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    analysis_id: int = Field(foreign_key="analysis.id", index=True)
+    question: str
+    answer: str
+    sources_json: str | None = None  # JSON array of cited source URLs
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
 
 
 def _migrate() -> None:
@@ -85,6 +97,7 @@ def _migrate() -> None:
         ("analysis", "competitors", "TEXT"),
         ("analysis", "comparison_json", "TEXT"),
         ("source", "competitor", "VARCHAR"),
+        ("source", "text", "TEXT"),
     ]
     for table_name, col_name, sql_type in additions:
         if table_name not in existing_tables:
@@ -182,8 +195,9 @@ def upsert_source(
     scraper: str,
     title: str | None = None,
     competitor: str | None = None,
+    text: str | None = None,
 ) -> int:
-    """Insert a Source row if missing. competitor is only set on insert."""
+    """Insert a Source row if missing. competitor and text are only set on insert."""
 
     with Session(engine) as s:
         row = s.exec(select(Source).where(Source.url == url)).first()
@@ -194,6 +208,7 @@ def upsert_source(
                 scraper=scraper,
                 title=title,
                 competitor=competitor,
+                text=text,
             )
             s.add(row)
             s.commit()
@@ -217,3 +232,48 @@ def add_mention(
             )
         )
         s.commit()
+
+
+def add_chat_turn(
+    analysis_id: int,
+    question: str,
+    answer: str,
+    sources_json: str | None = None,
+) -> int:
+    with Session(engine) as s:
+        row = ChatTurn(
+            analysis_id=analysis_id,
+            question=question,
+            answer=answer,
+            sources_json=sources_json,
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        return row.id
+
+
+def list_chat_turns(analysis_id: int, limit: int | None = None) -> list[ChatTurn]:
+    with Session(engine) as s:
+        stmt = (
+            select(ChatTurn)
+            .where(ChatTurn.analysis_id == analysis_id)
+            .order_by(ChatTurn.created_at.asc())
+        )
+        rows = s.exec(stmt).all()
+    if limit is None:
+        return rows
+    return rows[-limit:]
+
+
+def load_analysis_sources(analysis_id: int) -> list[Source]:
+    """Every Source referenced by this analysis's Mentions. Used to rebuild FAISS."""
+
+    with Session(engine) as s:
+        stmt = (
+            select(Source)
+            .join(Mention, Mention.source_id == Source.id)
+            .where(Mention.analysis_id == analysis_id)
+            .distinct()
+        )
+        return s.exec(stmt).all()
