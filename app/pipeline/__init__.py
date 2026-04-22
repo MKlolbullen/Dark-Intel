@@ -3,11 +3,13 @@ import json
 from typing import Sequence
 
 from ..config import Config
+from ..analysis.comparison import generate_comparison
 from ..intel.competitors import discover_competitors, parse_user_competitors
 from ..models import (
     add_edge,
     add_mention,
     create_analysis,
+    update_analysis_comparison,
     update_analysis_summary,
     upsert_node,
     upsert_source,
@@ -131,6 +133,12 @@ async def run_pipeline_async(
         for i, doc in enumerate(result["source_documents"])
     }
     update_analysis_summary(analysis_id, answer)
+
+    if competitors:
+        comparison = generate_comparison(business_name, list(competitors), docs)
+        if comparison:
+            update_analysis_comparison(analysis_id, json.dumps(comparison))
+
     return analysis_id, answer, details
 
 

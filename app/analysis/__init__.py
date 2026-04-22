@@ -1,3 +1,3 @@
-from . import aggregations, sentiment
+from . import aggregations, comparison, sentiment
 
-__all__ = ["aggregations", "sentiment"]
+__all__ = ["aggregations", "comparison", "sentiment"]

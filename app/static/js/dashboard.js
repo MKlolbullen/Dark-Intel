@@ -109,6 +109,28 @@ const LAYOUT = {
       '<div class="text-xs text-gray-500 p-4">No scored mentions from competitor pages yet.</div>';
   }
 
+  // Top entities per competitor — heatmap
+  const tep = data.top_entities_per_competitor || { competitors: [], entities: [], matrix: [] };
+  if (tep.competitors.length && tep.entities.length) {
+    Plotly.newPlot("competitor_entities", [{
+      type: "heatmap",
+      x: tep.competitors,
+      y: tep.entities,
+      z: tep.matrix,
+      colorscale: "Viridis",
+      hoverongaps: false,
+      colorbar: { tickfont: { color: "#e5e7eb" } },
+    }], {
+      ...LAYOUT,
+      title: "Top entities per competitor",
+      margin: { ...LAYOUT.margin, l: 160, b: 120 },
+      xaxis: { tickangle: -30 },
+    }, { displayModeBar: false });
+  } else {
+    document.getElementById("competitor_entities").innerHTML =
+      '<div class="text-xs text-gray-500 p-4">No competitor entity data yet.</div>';
+  }
+
   // Mentions over time — line
   const tl = data.mentions_over_time || { days: [], counts: [] };
   Plotly.newPlot("timeline", [{

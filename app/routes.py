@@ -63,7 +63,18 @@ def dashboard():
             competitors = _json.loads(analysis.competitors)
         except Exception:
             competitors = []
-    return render_template("dashboard.html", analysis=analysis, competitors=competitors)
+    comparison = None
+    if analysis.comparison_json:
+        try:
+            comparison = _json.loads(analysis.comparison_json)
+        except Exception:
+            comparison = None
+    return render_template(
+        "dashboard.html",
+        analysis=analysis,
+        competitors=competitors,
+        comparison=comparison,
+    )
 
 
 @main_bp.route("/api/analyses")

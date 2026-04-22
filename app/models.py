@@ -42,6 +42,7 @@ class Analysis(SQLModel, table=True):
     model: str
     summary: str | None = None
     competitors: str | None = None  # JSON: [{"name": "...", "domain": "..."}, ...]
+    comparison_json: str | None = None  # JSON: structured head-to-head table
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 
 
@@ -82,6 +83,7 @@ def _migrate() -> None:
     additions: list[tuple[str, str, str]] = [
         ("edge", "analysis_id", "INTEGER"),
         ("analysis", "competitors", "TEXT"),
+        ("analysis", "comparison_json", "TEXT"),
         ("source", "competitor", "VARCHAR"),
     ]
     for table_name, col_name, sql_type in additions:
@@ -160,6 +162,16 @@ def update_analysis_summary(analysis_id: int, summary: str) -> None:
         if row is None:
             return
         row.summary = summary
+        s.add(row)
+        s.commit()
+
+
+def update_analysis_comparison(analysis_id: int, comparison_json: str) -> None:
+    with Session(engine) as s:
+        row = s.get(Analysis, analysis_id)
+        if row is None:
+            return
+        row.comparison_json = comparison_json
         s.add(row)
         s.commit()
 
