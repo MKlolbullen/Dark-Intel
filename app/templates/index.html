@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block body %}
+<main class="max-w-2xl mx-auto p-8 space-y-6">
+  <header class="space-y-2">
+    <h1 class="text-3xl font-bold">Dark-Intel</h1>
+    <p class="text-sm text-gray-400">
+      Business intelligence: scrape relevant sources, build an entity graph,
+      and answer with Claude.
+    </p>
+  </header>
+
+  <form method="post" class="space-y-4">
+    <div class="space-y-1">
+      <label class="text-xs uppercase tracking-wide text-gray-400">Business name</label>
+      <input name="business_name" required
+        class="w-full p-2 rounded bg-gray-800 text-gray-100"
+        placeholder="e.g. Anthropic">
+    </div>
+
+    <div class="space-y-1">
+      <label class="text-xs uppercase tracking-wide text-gray-400">Industry</label>
+      <input name="industry" required
+        class="w-full p-2 rounded bg-gray-800 text-gray-100"
+        placeholder="e.g. AI, fintech, retail">
+    </div>
+
+    <div class="space-y-1">
+      <label class="text-xs uppercase tracking-wide text-gray-400">Question</label>
+      <textarea name="question" rows="3" required
+        class="w-full p-2 rounded bg-gray-800 text-gray-100"
+        placeholder="What should the analysis surface? e.g. main competitors, recent leadership changes, sentiment among engineers"></textarea>
+    </div>
+
+    <fieldset class="space-y-2">
+      <legend class="text-xs uppercase tracking-wide text-gray-400">Sources</legend>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        {% for ch in available_channels %}
+          <label class="flex items-center gap-2">
+            <input type="checkbox" name="channels" value="{{ ch }}"
+              {% if ch in default_channels %}checked{% endif %}>
+            {{ ch }}
+          </label>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-gray-500">
+        reddit and linkedin only fire when their credentials are configured in <code>.env</code>.
+      </p>
+    </fieldset>
+
+    <div class="flex justify-between items-center pt-2">
+      <a href="{{ url_for('main.graph') }}" class="text-indigo-400 underline text-sm">
+        Open knowledge graph
+      </a>
+      <button class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded">
+        Analyze
+      </button>
+    </div>
+  </form>
+</main>
+{% endblock %}

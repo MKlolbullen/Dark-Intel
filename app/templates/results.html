@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block body %}
+<main class="max-w-3xl mx-auto p-8 space-y-6">
+  <a href="{{ url_for('main.index') }}" class="text-indigo-400 text-sm">&larr; New analysis</a>
+
+  <section class="space-y-2">
+    <h2 class="text-sm uppercase tracking-wide text-gray-400">Target</h2>
+    <p class="text-lg">
+      <span class="font-semibold">{{ business_name }}</span>
+      <span class="text-gray-400">·</span>
+      <span class="text-gray-300">{{ industry }}</span>
+    </p>
+    <p class="text-sm text-gray-300">{{ question }}</p>
+  </section>
+
+  <section class="space-y-2">
+    <h2 class="text-sm uppercase tracking-wide text-gray-400">Answer</h2>
+    {# d3graph.js scrapes the first <p> on this page for the side panel summary; keep the answer here. #}
+    <p class="whitespace-pre-wrap leading-relaxed">{{ answer }}</p>
+  </section>
+
+  {% if details %}
+  <section class="space-y-2">
+    <h2 class="text-sm uppercase tracking-wide text-gray-400">Sources</h2>
+    <ol class="list-none space-y-1 text-sm">
+      {% for label, src in details.items() %}
+        <li><span class="text-gray-500">{{ label }}</span> <a class="text-indigo-400 underline" href="{{ src }}">{{ src }}</a></li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  <p class="pt-4 space-x-4">
+    <a href="{{ url_for('main.dashboard', analysis_id=analysis_id) }}" class="text-indigo-400 underline text-sm">
+      Open dashboard &rarr;
+    </a>
+    <a href="{{ url_for('main.graph', analysis_id=analysis_id) }}" class="text-indigo-400 underline text-sm">
+      View knowledge graph &rarr;
+    </a>
+  </p>
+</main>
+{% endblock %}
