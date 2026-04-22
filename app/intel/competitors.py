@@ -16,8 +16,10 @@ _SYSTEM = (
     "You are a market analyst. Identify the most relevant direct competitors "
     "of the named business in the named industry. Return real, currently "
     "operating companies and their canonical primary domains (no scheme, no "
-    "path; e.g. 'openai.com'). Exclude the business itself. Return strict "
-    "JSON only — no prose, no markdown."
+    "path; e.g. 'openai.com'). Exclude the business itself. Return exactly "
+    "the requested number of competitors unless the business genuinely has "
+    "fewer direct competitors than that. Return strict JSON only — no prose, "
+    "no markdown."
 )
 
 _SCHEMA = {

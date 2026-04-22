@@ -104,12 +104,20 @@ async def run_pipeline_async(
     question: str,
     channels: Sequence[str] | None = None,
     competitors_input: str = "",
+    business_website: str = "",
     progress: ProgressCallback | None = None,
 ):
+    from ..intel.competitors import _normalize_domain
+
     chans = list(channels) if channels else list(Config.DEFAULT_CHANNELS)
+    business_domain = _normalize_domain(business_website)
     _notify(progress, "resolving_competitors")
     competitors = await _resolve_competitors(business_name, industry, chans, competitors_input)
-    logger.info("resolved %d competitor(s)", len(competitors))
+    logger.info(
+        "resolved %d competitor(s); business_domain=%r",
+        len(competitors),
+        business_domain,
+    )
 
     competitors_json = (
         json.dumps([{"name": c.name, "domain": c.domain} for c in competitors])
@@ -127,7 +135,12 @@ async def run_pipeline_async(
 
     _notify(progress, "scraping")
     docs, source_counts = await gather_documents(
-        business_name, industry, question, chans, competitors=competitors
+        business_name,
+        industry,
+        question,
+        chans,
+        competitors=competitors,
+        business_domain=business_domain,
     )
     if not docs:
         update_analysis_summary(analysis_id, "No data retrieved.")
@@ -175,10 +188,17 @@ def run_pipeline(
     question: str,
     channels: Sequence[str] | None = None,
     competitors_input: str = "",
+    business_website: str = "",
     progress: ProgressCallback | None = None,
 ):
     return asyncio.run(
         run_pipeline_async(
-            business_name, industry, question, channels, competitors_input, progress
+            business_name,
+            industry,
+            question,
+            channels,
+            competitors_input,
+            business_website,
+            progress,
         )
     )

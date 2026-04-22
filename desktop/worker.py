@@ -17,9 +17,17 @@ class PipelineWorker(QThread):
         question: str,
         channels: list[str],
         competitors_input: str = "",
+        business_website: str = "",
     ):
         super().__init__()
-        self._args = (business_name, industry, question, channels, competitors_input)
+        self._args = (
+            business_name,
+            industry,
+            question,
+            channels,
+            competitors_input,
+            business_website,
+        )
 
     def run(self) -> None:
         from app.pipeline import run_pipeline

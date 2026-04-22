@@ -10,7 +10,14 @@ from .base import BaseScraper, ScrapedDoc, ScrapeQuery
 
 logger = logging.getLogger(__name__)
 
-HEADERS = {"User-Agent": "dark-intel/0.2 (+https://github.com/MKlolbullen/Dark-Intel)"}
+# Real browser UA — Reuters and others 401 on generic bot UAs.
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 # Industry seed pages. Keys are lowercased substrings of the industry input.
 # Generic seeds are appended for every query so we always have something to fetch.
@@ -29,16 +36,33 @@ INDUSTRY_SEEDS: dict[str, list[str]] = {
     "retail": ["https://www.reuters.com/business/retail-consumer/"],
 }
 GENERIC_SEEDS = [
-    "https://www.reuters.com/",
     "https://techcrunch.com/",
 ]
 
+# When the user supplies their own website, fetch the same curated path set
+# we use for competitor domains so their own about / pricing / products text
+# lands in the corpus alongside.
+OWN_SITE_PATHS: tuple[str, ...] = (
+    "/",
+    "/about",
+    "/about-us",
+    "/product",
+    "/products",
+    "/features",
+    "/pricing",
+    "/blog",
+    "/news",
+)
+
 
 class NewsScraper(BaseScraper):
-    """Fetch and clean a curated set of news / company-page URLs.
+    """Fetch and clean a curated set of news + own-site URLs.
 
     Lower-friction than the structured news APIs: just GET each seed and
-    let the entity extraction + RAG layers do the rest.
+    let the entity extraction + RAG layers do the rest. Also pulls the
+    user's own website paths when `ScrapeQuery.business_domain` is set —
+    prefer that over the old `{slug}.com/about` guess, which was almost
+    always a 404.
     """
 
     kind = "news"
@@ -49,10 +73,9 @@ class NewsScraper(BaseScraper):
         for key, urls in INDUSTRY_SEEDS.items():
             if key in industry:
                 seeds.extend(urls)
-        # Best-effort company about page; harmless if it 404s.
-        slug = query.business_name.strip().lower().replace(" ", "")
-        if slug:
-            seeds.append(f"https://{slug}.com/about")
+        if query.business_domain:
+            for path in OWN_SITE_PATHS:
+                seeds.append(f"https://{query.business_domain}{path}")
         return list(dict.fromkeys(seeds))  # dedupe, preserve order
 
     async def _fetch(self, query: ScrapeQuery) -> list[ScrapedDoc]:
@@ -69,8 +92,12 @@ class NewsScraper(BaseScraper):
         except Exception as exc:
             logger.info("news GET %s failed: %s", url, exc)
             return None
+        text = clean_html_to_text(r.text)
+        if len(text) < 200:
+            logger.debug("news GET %s returned only %d chars, dropping", url, len(text))
+            return None
         return ScrapedDoc(
-            text=clean_html_to_text(r.text),
+            text=text,
             url=url,
             kind=self.kind,
             title=extract_title(r.text),

@@ -70,6 +70,11 @@ class MainWindow(QMainWindow):
         self._industry.setPlaceholderText("e.g. AI, fintech, retail")
         layout.addWidget(self._industry)
 
+        layout.addWidget(QLabel("<b>Your website (optional)</b>"))
+        self._business_website = QLineEdit()
+        self._business_website.setPlaceholderText("e.g. anthropic.com")
+        layout.addWidget(self._business_website)
+
         layout.addWidget(QLabel("<b>Question</b>"))
         self._question = QTextEdit()
         self._question.setPlaceholderText(
@@ -139,10 +144,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No sources", "Pick at least one source channel.")
             return
         competitors_input = self._competitors.text().strip()
+        business_website = self._business_website.text().strip()
 
         self._set_running(True)
         self._worker = PipelineWorker(
-            business, industry, question, channels, competitors_input
+            business, industry, question, channels, competitors_input, business_website
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_finished)
@@ -183,7 +189,13 @@ class MainWindow(QMainWindow):
     def _set_running(self, running: bool) -> None:
         self._run.setEnabled(not running)
         self._run.setText("Running…" if running else "Run analysis")
-        for w in (self._business, self._industry, self._question, self._competitors):
+        for w in (
+            self._business,
+            self._industry,
+            self._business_website,
+            self._question,
+            self._competitors,
+        ):
             w.setEnabled(not running)
         for cb in self._channels.values():
             cb.setEnabled(not running)

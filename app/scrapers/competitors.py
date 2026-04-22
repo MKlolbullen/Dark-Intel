@@ -86,7 +86,12 @@ class CompetitorsScraper(BaseScraper):
                 return None
         text = clean_html_to_text(r.text)
         if len(text) < 200:
-            return None  # likely a redirect to a JS shell or empty page
+            logger.info(
+                "competitor GET %s returned only %d chars (likely JS shell), dropping",
+                url,
+                len(text),
+            )
+            return None
         return ScrapedDoc(
             text=text,
             url=url,

@@ -17,6 +17,7 @@ async def gather_documents(
     channels: list[str],
     competitors: tuple[Competitor, ...] = (),
     limit_per_source: int = 20,
+    business_domain: str = "",
 ) -> tuple[list[Document], dict[str, int]]:
     """Run every requested scraper in parallel.
 
@@ -32,6 +33,7 @@ async def gather_documents(
         question=question,
         limit_per_source=limit_per_source,
         competitors=competitors,
+        business_domain=business_domain,
     )
     names = [name for name in channels if name in REGISTRY]
     scrapers = [REGISTRY[name]() for name in names]

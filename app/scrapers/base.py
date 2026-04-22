@@ -25,6 +25,7 @@ class ScrapeQuery:
     question: str
     limit_per_source: int = 20
     competitors: tuple[Competitor, ...] = ()
+    business_domain: str = ""  # normalized; empty = unknown, skip own-site scraping
 
 
 @dataclass
