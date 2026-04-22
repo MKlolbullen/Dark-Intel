@@ -30,6 +30,17 @@
         placeholder="What should the analysis surface? e.g. main competitors, recent leadership changes, sentiment among engineers"></textarea>
     </div>
 
+    <div class="space-y-1">
+      <label class="text-xs uppercase tracking-wide text-gray-400">Competitors (optional)</label>
+      <input name="competitors"
+        class="w-full p-2 rounded bg-gray-800 text-gray-100"
+        placeholder="e.g. OpenAI (openai.com), Google DeepMind (deepmind.google)">
+      <p class="text-xs text-gray-500">
+        Leave blank to auto-discover with Claude. Format: <code>Name (domain)</code>, comma-separated.
+        Requires the <code>competitor</code> source channel below.
+      </p>
+    </div>
+
     <fieldset class="space-y-2">
       <legend class="text-xs uppercase tracking-wide text-gray-400">Sources</legend>
       <div class="grid grid-cols-2 gap-2 text-sm">
@@ -42,7 +53,8 @@
         {% endfor %}
       </div>
       <p class="text-xs text-gray-500">
-        reddit and linkedin only fire when their credentials are configured in <code>.env</code>.
+        reddit, linkedin, and x only fire when their credentials are configured in <code>.env</code>.
+        competitor scrapes the competitors' own websites (<code>/about</code>, <code>/pricing</code>, etc.).
       </p>
     </fieldset>
 

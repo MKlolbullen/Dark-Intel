@@ -35,12 +35,13 @@ Dark-Intel is a business-intelligence pipeline with two front ends over the same
 
 ### Request flow
 
-`POST /` (web) and the Run-analysis button (Qt) both end at `app.pipeline.run_pipeline(business_name, industry, question, channels)`. The pipeline:
+`POST /` (web) and the Run-analysis button (Qt) both end at `app.pipeline.run_pipeline(business_name, industry, question, channels, competitors_input)`. The pipeline:
 
-1. **Insert an `Analysis` row** (`app/models.py:create_analysis`) with the user's inputs and the RAG model name. Returns the `analysis_id` that everything downstream is keyed on.
-2. **Gather documents** via `app/pipeline/source_selection.gather_documents`, which dispatches each requested channel in `REGISTRY` (`app/scrapers/__init__.py`) in parallel. Each scraper subclass (`news`, `reddit`, `hn`, `linkedin`, `x`, `reviews`) returns `ScrapedDoc`s, converted to LangChain `Document`s. A scraper that's not configured (no API token / opt-in flag) silently returns `[]` via `BaseScraper.enabled()`; a scraper that throws is swallowed in `BaseScraper.fetch` so one dead source doesn't kill the run.
-3. **Per-document processing** (`process_doc`): upsert a global `Source` row, run spaCy NER (`app/pipeline/entities.py`), upsert a `Node` per entity, persist a `Mention(analysis_id, source_id, node_id, snippet)`, and add a `PAGE → entity` `Edge` scoped to the analysis. Then fan out N·(N−1)/2 pairwise `infer_relation_async` calls (Claude Haiku) and persist non-`no_relation` results as additional `Edge` rows.
-4. **RAG answer** via `app/pipeline/rag.py`: build a FAISS index from the docs (OpenAI embeddings), retrieve top-6 for the question, send to Claude Opus 4.7 with `thinking: {type: "adaptive"}`, write the result back to `Analysis.summary`, return `(analysis_id, answer, details)`.
+1. **Resolve competitors** (`_resolve_competitors`): if the user pasted `Name (domain), Name2 (domain2)` into the Competitors field, parse it. Otherwise, when the `competitor` channel is enabled, call `app/intel/competitors.discover_competitors` — a Claude Opus call with `output_config.format` enforcing a JSON schema of `[{name, domain}, ...]`.
+2. **Insert an `Analysis` row** (`app/models.py:create_analysis`) with the user's inputs, the RAG model name, and the resolved competitor list (JSON-encoded). Returns the `analysis_id` that everything downstream is keyed on.
+3. **Gather documents** via `app/pipeline/source_selection.gather_documents`, which dispatches each requested channel in `REGISTRY` (`app/scrapers/__init__.py`) in parallel. Each scraper subclass (`news`, `reddit`, `hn`, `linkedin`, `x`, `reviews`, `competitor`) returns `ScrapedDoc`s, converted to LangChain `Document`s. The `competitor` scraper fans out per `Competitor` × `DEFAULT_PATHS` (`/`, `/about`, `/pricing`, `/products`, `/blog`, …), tags each `ScrapedDoc.competitor` with the competitor name, and returns the cleaned text. A scraper that's not configured (no API token / opt-in flag) silently returns `[]` via `BaseScraper.enabled()`; a scraper that throws is swallowed in `BaseScraper.fetch` so one dead source doesn't kill the run.
+4. **Per-document processing** (`process_doc`): upsert a global `Source` row (with `Source.competitor` set on competitor pages), run spaCy NER (`app/pipeline/entities.py`), upsert a `Node` per entity, persist a `Mention(analysis_id, source_id, node_id, snippet)`, and add a `PAGE → entity` `Edge` scoped to the analysis. Then fan out N·(N−1)/2 pairwise `infer_relation_async` calls (Claude Haiku) and persist non-`no_relation` results as additional `Edge` rows.
+5. **RAG answer** via `app/pipeline/rag.py`: build a FAISS index from the docs (OpenAI embeddings), retrieve top-6 for the question, send to Claude Opus 4.7 with `thinking: {type: "adaptive"}`, write the result back to `Analysis.summary`, return `(analysis_id, answer, details)`. The full prompt includes a competitor list (when present) plus an instruction asking Claude to contrast the target against each competitor on product/pricing/positioning.
 
 ### Schema and persistence (`app/models.py`)
 
@@ -48,11 +49,11 @@ Dark-Intel is a business-intelligence pipeline with two front ends over the same
 |------------|---------|
 | `Node`     | One row per distinct entity name (globally unique). |
 | `Edge`     | Relation between two nodes, scoped to an `analysis_id`. |
-| `Analysis` | One row per `run_pipeline` call. Stores inputs, model, and the final answer. |
-| `Source`   | One row per fetched URL (deduped globally). |
+| `Analysis` | One row per `run_pipeline` call. Stores inputs, model, the final answer, and a JSON-encoded `competitors` list resolved at run time. |
+| `Source`   | One row per fetched URL (deduped globally). `competitor` is set on `competitor`-channel docs; null elsewhere. |
 | `Mention`  | Many-to-many over (`Analysis`, `Source`, `Node`) with a `snippet` and a nullable `sentiment_score` populated lazily on dashboard load. |
 
-Migrations are intentionally trivial: at import time `_migrate()` introspects the `edge` table and runs `ALTER TABLE ADD COLUMN analysis_id` if the column is missing. Anything more involved (renames, type changes) needs a one-shot script — there is no Alembic.
+Migrations are intentionally trivial: at import time `_migrate()` walks a list of `(table, column, sql_type)` tuples and runs `ALTER TABLE ADD COLUMN` for any column that isn't there yet. Existing entries cover `edge.analysis_id`, `analysis.competitors`, and `source.competitor`. Anything more involved (renames, type changes) needs a one-shot script — there is no Alembic.
 
 ### Two LLM tiers
 
@@ -90,6 +91,8 @@ Every scraper subclasses `BaseScraper` and exposes:
 Adding a new channel: drop a new module in `app/scrapers/`, subclass `BaseScraper`, register it in `REGISTRY`, and (if it needs an env var) document it in `.env.example` and `SCRAPING.md`. The UI checkbox appears automatically.
 
 LinkedIn note: `linkedin.py` uses the official LinkedIn REST API v2 (`vanityName` lookup → org's own posts via `r_organization_social`). The richer "search across LinkedIn for mentions of company X" requires Marketing Developer Platform approval (multi-week review) — see the module docstring.
+
+Competitor channel: `competitor` is on by default. With no user input it auto-discovers via `app/intel/competitors.discover_competitors` (Claude Opus + JSON schema). With user input (`Name (domain), Name2 (domain2)`) it skips discovery. Either way the resolved list is persisted on `Analysis.competitors`, every fetched competitor page becomes a `Source` tagged with `Source.competitor`, and the dashboard adds two charts (`coverage_per_competitor`, `avg_sentiment_per_competitor`) on top of the existing five. The RAG prompt is augmented to ask Claude to contrast the target business against each named competitor.
 
 ## Caveats worth flagging
 

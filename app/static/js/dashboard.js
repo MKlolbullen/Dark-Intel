@@ -65,6 +65,50 @@ const LAYOUT = {
     margin: { ...LAYOUT.margin, l: 140 },
   }, { displayModeBar: false });
 
+  // Competitor coverage — grouped bar (sources + mentions)
+  const cov = data.coverage_per_competitor || {};
+  const covNames = Object.keys(cov);
+  if (covNames.length) {
+    Plotly.newPlot("competitor_coverage", [
+      {
+        type: "bar",
+        name: "sources",
+        x: covNames,
+        y: covNames.map(n => cov[n].sources),
+        marker: { color: "#10b981" },
+      },
+      {
+        type: "bar",
+        name: "mentions",
+        x: covNames,
+        y: covNames.map(n => cov[n].mentions),
+        marker: { color: "#6366f1" },
+      },
+    ], { ...LAYOUT, title: "Competitor coverage", barmode: "group" }, { displayModeBar: false });
+  } else {
+    document.getElementById("competitor_coverage").innerHTML =
+      '<div class="text-xs text-gray-500 p-4">No competitor pages scraped for this analysis.</div>';
+  }
+
+  // Sentiment per competitor — bar
+  const cs = data.avg_sentiment_per_competitor || {};
+  const csNames = Object.keys(cs);
+  if (csNames.length) {
+    Plotly.newPlot("competitor_sentiment", [{
+      type: "bar",
+      x: csNames,
+      y: csNames.map(n => cs[n]),
+      marker: { color: csNames.map(n => cs[n] >= 0 ? "#10b981" : "#ef4444") },
+    }], {
+      ...LAYOUT,
+      title: "Avg sentiment of mentions on each competitor's pages",
+      yaxis: { range: [-1, 1], zeroline: true, zerolinecolor: "#4b5563" },
+    }, { displayModeBar: false });
+  } else {
+    document.getElementById("competitor_sentiment").innerHTML =
+      '<div class="text-xs text-gray-500 p-4">No scored mentions from competitor pages yet.</div>';
+  }
+
   // Mentions over time — line
   const tl = data.mentions_over_time || { days: [], counts: [] };
   Plotly.newPlot("timeline", [{

@@ -6,6 +6,14 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class Competitor:
+    """A competitor of the target business, identified by display name + canonical domain."""
+
+    name: str
+    domain: str  # e.g. "openai.com" — no scheme, no path
+
+
+@dataclass(frozen=True)
 class ScrapeQuery:
     """A user-supplied intelligence query, threaded through every scraper."""
 
@@ -13,6 +21,7 @@ class ScrapeQuery:
     industry: str
     question: str
     limit_per_source: int = 20
+    competitors: tuple[Competitor, ...] = ()
 
 
 @dataclass
@@ -21,10 +30,11 @@ class ScrapedDoc:
 
     text: str
     url: str
-    kind: str  # one of news / reddit / hn / linkedin
+    kind: str  # one of news / reddit / hn / linkedin / x / reviews / competitor
     title: str | None = None
     author: str | None = None
     published_at: datetime | None = None
+    competitor: str | None = None  # set on competitor-channel docs to the competitor's name
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

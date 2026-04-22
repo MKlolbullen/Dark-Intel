@@ -108,6 +108,50 @@ def mentions_over_time(analysis_id: int) -> dict[str, list]:
     return {"days": days, "counts": [buckets[d] for d in days]}
 
 
+def coverage_per_competitor(analysis_id: int) -> dict[str, dict[str, int]]:
+    """For each competitor, count distinct sources scraped and mentions extracted."""
+
+    with Session(engine) as s:
+        rows = s.exec(
+            select(Source.competitor, Source.id, Mention.id)
+            .join(Mention, Mention.source_id == Source.id)
+            .where(Mention.analysis_id == analysis_id)
+            .where(Source.competitor.is_not(None))
+        ).all()
+    sources_per: defaultdict[str, set] = defaultdict(set)
+    mentions_per: Counter[str] = Counter()
+    for competitor, source_id, _ in rows:
+        sources_per[competitor].add(source_id)
+        mentions_per[competitor] += 1
+    return {
+        c: {"sources": len(sources_per[c]), "mentions": mentions_per[c]}
+        for c in sorted(sources_per)
+    }
+
+
+def avg_sentiment_per_competitor(analysis_id: int) -> dict[str, float]:
+    """Average sentiment of mentions extracted from each competitor's own pages.
+
+    Useful as a rough proxy for how favorably each competitor describes
+    the broader landscape (including the target business).
+    """
+
+    with Session(engine) as s:
+        rows = s.exec(
+            select(Source.competitor, Mention.sentiment_score)
+            .join(Mention, Mention.source_id == Source.id)
+            .where(Mention.analysis_id == analysis_id)
+            .where(Source.competitor.is_not(None))
+            .where(Mention.sentiment_score.is_not(None))
+        ).all()
+    sums: defaultdict[str, float] = defaultdict(float)
+    counts: defaultdict[str, int] = defaultdict(int)
+    for competitor, score in rows:
+        sums[competitor] += score
+        counts[competitor] += 1
+    return {c: sums[c] / counts[c] for c in sums if counts[c]}
+
+
 def all_charts(analysis_id: int) -> dict:
     return {
         "source_mix": source_mix(analysis_id),
@@ -115,4 +159,6 @@ def all_charts(analysis_id: int) -> dict:
         "avg_sentiment_by_kind": avg_sentiment_by_kind(analysis_id),
         "sentiment_distribution": sentiment_distribution(analysis_id),
         "mentions_over_time": mentions_over_time(analysis_id),
+        "coverage_per_competitor": coverage_per_competitor(analysis_id),
+        "avg_sentiment_per_competitor": avg_sentiment_per_competitor(analysis_id),
     }

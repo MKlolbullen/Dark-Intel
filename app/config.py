@@ -25,5 +25,5 @@ class Config:
     LINKEDIN_ACCESS_TOKEN = os.getenv("LINKEDIN_ACCESS_TOKEN")
 
     DEFAULT_CHANNELS = tuple(
-        c.strip() for c in os.getenv("DEFAULT_CHANNELS", "news,reddit,hn").split(",") if c.strip()
+        c.strip() for c in os.getenv("DEFAULT_CHANNELS", "news,reddit,hn,competitor").split(",") if c.strip()
     )

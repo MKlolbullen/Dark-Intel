@@ -21,11 +21,22 @@
 <main class="p-4 space-y-4">
   <p id="status" class="text-sm text-gray-400">Loading…</p>
 
+  {% if competitors %}
+  <section class="bg-gray-900 rounded p-3 text-sm">
+    <span class="text-xs uppercase tracking-wide text-gray-400">Competitors</span>
+    <span class="ml-2">
+      {% for c in competitors %}<span class="text-gray-200">{{ c.name }}</span><span class="text-gray-500">&nbsp;({{ c.domain }}){% if not loop.last %}, {% endif %}</span>{% endfor %}
+    </span>
+  </section>
+  {% endif %}
+
   <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div id="source_mix" class="bg-gray-900 rounded p-2 h-80"></div>
     <div id="avg_sentiment" class="bg-gray-900 rounded p-2 h-80"></div>
     <div id="sentiment_dist" class="bg-gray-900 rounded p-2 h-80"></div>
     <div id="top_entities" class="bg-gray-900 rounded p-2 h-80"></div>
+    <div id="competitor_coverage" class="bg-gray-900 rounded p-2 h-80"></div>
+    <div id="competitor_sentiment" class="bg-gray-900 rounded p-2 h-80"></div>
     <div id="timeline" class="bg-gray-900 rounded p-2 h-80 lg:col-span-2"></div>
   </section>
 

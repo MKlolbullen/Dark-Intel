@@ -1,4 +1,5 @@
-from .base import BaseScraper, ScrapedDoc, ScrapeQuery
+from .base import BaseScraper, Competitor, ScrapedDoc, ScrapeQuery
+from .competitors import CompetitorsScraper
 from .hackernews import HackerNewsScraper
 from .linkedin import LinkedInScraper
 from .news import NewsScraper
@@ -13,13 +14,16 @@ REGISTRY: dict[str, type[BaseScraper]] = {
     "linkedin": LinkedInScraper,
     "x": XScraper,
     "reviews": ReviewsScraper,
+    "competitor": CompetitorsScraper,
 }
 
 __all__ = [
     "REGISTRY",
     "BaseScraper",
+    "Competitor",
     "ScrapeQuery",
     "ScrapedDoc",
+    "CompetitorsScraper",
     "HackerNewsScraper",
     "LinkedInScraper",
     "NewsScraper",

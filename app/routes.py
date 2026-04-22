@@ -18,8 +18,9 @@ def index():
         industry = request.form.get("industry", "").strip()
         question = request.form.get("question", "").strip()
         channels = request.form.getlist("channels") or list(Config.DEFAULT_CHANNELS)
+        competitors_input = request.form.get("competitors", "").strip()
         analysis_id, answer, details = run_pipeline(
-            business_name, industry, question, channels
+            business_name, industry, question, channels, competitors_input
         )
         return render_template(
             "results.html",
@@ -47,6 +48,8 @@ def graph():
 
 @main_bp.route("/dashboard")
 def dashboard():
+    import json as _json
+
     analysis_id = request.args.get("analysis_id", type=int)
     if analysis_id is None:
         abort(400, "analysis_id is required")
@@ -54,7 +57,13 @@ def dashboard():
         analysis = s.get(Analysis, analysis_id)
     if analysis is None:
         abort(404)
-    return render_template("dashboard.html", analysis=analysis)
+    competitors = []
+    if analysis.competitors:
+        try:
+            competitors = _json.loads(analysis.competitors)
+        except Exception:
+            competitors = []
+    return render_template("dashboard.html", analysis=analysis, competitors=competitors)
 
 
 @main_bp.route("/api/analyses")
