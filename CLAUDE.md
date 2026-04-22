@@ -119,6 +119,8 @@ Each completed analysis has a chat thread at `/chat?analysis_id=N`. `process_doc
 
 HTML cleaning for the `news` and `competitor` scrapers shares `app/scrapers/_html.py:clean_html_to_text` — drops `nav`/`header`/`footer`/`aside`/`form`/`svg`/`iframe` plus `role=navigation|banner|contentinfo` and prefers `<article>`/`<main>` when present. Keeps entity extraction from picking up copyright notices and nav menus.
 
+Two scraper-quality knobs learned from live runs: the `news` scraper now sends a real Chrome User-Agent so Reuters / other news sites stop returning 401, and when the user pastes a `Your website` URL in the form the news scraper also fetches that domain's curated path set (`/`, `/about`, `/pricing`, `/products`, `/blog`, …) — same paths as competitor scraping, so your own positioning text lands in the corpus. The hostile `{slug}.com/about` guess we used before is gone. Hacker News results are filtered client-side by a word-boundary regex on the business name so "ica" no longer matches "silica" — check server logs for `"hn dropped N irrelevant hits"` to see the savings.
+
 ## Caveats worth flagging
 
 - **Cost surface.** A single analysis with 4 channels × 20 docs × ~8 entities/doc fires ~640 Haiku classification calls plus the lazy sentiment pass and the Opus answer. Cap docs via `ScrapeQuery.limit_per_source` and entities via `extract_entities`'s `thr` if cost becomes a problem.
