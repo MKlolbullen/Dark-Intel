@@ -1,4 +1,4 @@
-"""QThread that runs an analysis and emits the resulting analysis_id."""
+"""QThread that runs an analysis and reports progress + result."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from PySide6.QtCore import QThread, Signal
 
 
 class PipelineWorker(QThread):
-    finished_ok = Signal(int, str, dict)  # analysis_id, answer, details
+    progress = Signal(str)  # stage name: resolving_competitors | scraping | processing | answering | comparing | done
+    finished_ok = Signal(int, str, dict, dict)  # analysis_id, answer, details, source_counts
     failed = Signal(str)
 
     def __init__(
@@ -21,13 +22,14 @@ class PipelineWorker(QThread):
         self._args = (business_name, industry, question, channels, competitors_input)
 
     def run(self) -> None:
-        # Import inside the thread so PySide6 doesn't need spaCy/anthropic at startup
-        # if the user only wants to inspect previous analyses.
         from app.pipeline import run_pipeline
 
         try:
-            analysis_id, answer, details = run_pipeline(*self._args)
+            analysis_id, answer, details, source_counts = run_pipeline(
+                *self._args,
+                progress=self.progress.emit,
+            )
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
             return
-        self.finished_ok.emit(analysis_id, answer, details)
+        self.finished_ok.emit(analysis_id, answer, details, source_counts)

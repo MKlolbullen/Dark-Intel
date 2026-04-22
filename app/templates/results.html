@@ -12,6 +12,13 @@
     <p class="text-sm text-gray-300">{{ question }}</p>
   </section>
 
+  {% if source_counts %}
+  <section class="text-xs text-gray-400">
+    <span class="uppercase tracking-wide">Sources scraped:</span>
+    {% for name, count in source_counts.items() %}<span class="ml-2">{{ name }} {{ count }}</span>{% endfor %}
+  </section>
+  {% endif %}
+
   <section class="space-y-2">
     <h2 class="text-sm uppercase tracking-wide text-gray-400">Answer</h2>
     {# d3graph.js scrapes the first <p> on this page for the side panel summary; keep the answer here. #}

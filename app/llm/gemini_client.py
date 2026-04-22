@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from .base import LLMClient
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA_HINT = (
     "\n\nReturn a single valid JSON object. No prose, no markdown fences. "
@@ -81,9 +84,18 @@ class GeminiAdapter(LLMClient):
             response = self._client.models.generate_content(
                 model=self.model, contents=user, config=cfg
             )
-            text = (getattr(response, "text", "") or "").strip()
-            return json.loads(text) if text else None
         except Exception:
+            logger.exception("gemini generate_content failed")
+            return None
+        text = (getattr(response, "text", "") or "").strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception as exc:
+            logger.warning(
+                "gemini returned non-JSON output (%s): %r", exc, text[:200]
+            )
             return None
 
     async def acomplete_json(
@@ -95,7 +107,16 @@ class GeminiAdapter(LLMClient):
             response = await self._client.aio.models.generate_content(
                 model=self.model, contents=user, config=cfg
             )
-            text = (getattr(response, "text", "") or "").strip()
-            return json.loads(text) if text else None
         except Exception:
+            logger.exception("gemini generate_content (async) failed")
+            return None
+        text = (getattr(response, "text", "") or "").strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception as exc:
+            logger.warning(
+                "gemini returned non-JSON output (%s): %r", exc, text[:200]
+            )
             return None

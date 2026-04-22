@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from langchain_core.documents import Document
 
 from ..scrapers import REGISTRY, Competitor, ScrapedDoc, ScrapeQuery
+
+logger = logging.getLogger(__name__)
 
 
 async def gather_documents(
@@ -14,11 +17,13 @@ async def gather_documents(
     channels: list[str],
     competitors: tuple[Competitor, ...] = (),
     limit_per_source: int = 20,
-) -> list[Document]:
-    """Run every requested scraper in parallel and return LangChain Documents.
+) -> tuple[list[Document], dict[str, int]]:
+    """Run every requested scraper in parallel.
 
-    Unknown channel names are silently skipped, as are channels whose scrapers
-    are disabled (e.g. Reddit without API creds, LinkedIn without a token).
+    Returns (documents, per_channel_counts). Channel counts include only
+    scrapers that actually ran — unknown names and disabled-at-call-time
+    scrapers report 0. Exceptions inside scrapers are already swallowed
+    by `BaseScraper.fetch` and logged there.
     """
 
     query = ScrapeQuery(
@@ -28,14 +33,18 @@ async def gather_documents(
         limit_per_source=limit_per_source,
         competitors=competitors,
     )
-    scrapers = [REGISTRY[name]() for name in channels if name in REGISTRY]
+    names = [name for name in channels if name in REGISTRY]
+    scrapers = [REGISTRY[name]() for name in names]
     results = await asyncio.gather(*[s.fetch(query) for s in scrapers])
 
     docs: list[Document] = []
-    for batch in results:
+    counts: dict[str, int] = {name: 0 for name in names}
+    for name, batch in zip(names, results):
+        counts[name] = len(batch)
         for d in batch:
             docs.append(_to_document(d))
-    return docs
+    logger.info("scraping finished, docs=%d, counts=%s", len(docs), counts)
+    return docs, counts
 
 
 def _to_document(d: ScrapedDoc) -> Document:

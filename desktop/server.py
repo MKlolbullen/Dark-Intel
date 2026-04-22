@@ -35,6 +35,8 @@ class FlaskServer:
             "FLASK_RUN_PORT": str(self.port),
             "DARK_INTEL_PORT": str(self.port),
         }
+        # stderr inherits the parent so Flask logs + scraper/adapter
+        # warnings are visible in the terminal that launched the Qt app.
         self._proc = subprocess.Popen(
             [
                 sys.executable,
@@ -50,7 +52,6 @@ class FlaskServer:
             cwd=str(REPO_ROOT),
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         atexit.register(self.stop)
         self._wait_ready(timeout)

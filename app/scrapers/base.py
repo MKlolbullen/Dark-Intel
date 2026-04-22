@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -54,12 +57,16 @@ class BaseScraper:
 
     async def fetch(self, query: ScrapeQuery) -> list[ScrapedDoc]:
         if not self.enabled():
+            logger.info("scraper %s disabled (creds / flag missing)", self.kind)
             return []
         try:
-            return await self._fetch(query)
+            docs = await self._fetch(query)
         except Exception:
             # A single source failing must not nuke the whole analysis.
+            logger.exception("scraper %s crashed", self.kind)
             return []
+        logger.info("scraper %s returned %d docs", self.kind, len(docs))
+        return docs
 
     async def _fetch(self, query: ScrapeQuery) -> list[ScrapedDoc]:
         raise NotImplementedError

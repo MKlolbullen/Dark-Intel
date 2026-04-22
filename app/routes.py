@@ -22,7 +22,7 @@ def index():
         question = request.form.get("question", "").strip()
         channels = request.form.getlist("channels") or list(Config.DEFAULT_CHANNELS)
         competitors_input = request.form.get("competitors", "").strip()
-        analysis_id, answer, details = run_pipeline(
+        analysis_id, answer, details, source_counts = run_pipeline(
             business_name, industry, question, channels, competitors_input
         )
         return render_template(
@@ -33,6 +33,7 @@ def index():
             question=question,
             answer=answer,
             details=details,
+            source_counts=source_counts,
         )
     return render_template(
         "index.html",

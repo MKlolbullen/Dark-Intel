@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import httpx
-from bs4 import BeautifulSoup
 
+from ._html import clean_html_to_text, extract_title
 from .base import BaseScraper, Competitor, ScrapedDoc, ScrapeQuery
+
+logger = logging.getLogger(__name__)
 
 # Pages most likely to surface product, pricing, positioning, and recent moves.
 DEFAULT_PATHS: tuple[str, ...] = (
@@ -78,32 +81,17 @@ class CompetitorsScraper(BaseScraper):
             try:
                 r = await client.get(url)
                 r.raise_for_status()
-            except Exception:
+            except Exception as exc:
+                logger.debug("competitor GET %s failed: %s", url, exc)
                 return None
-        text = _html_to_text(r.text)
+        text = clean_html_to_text(r.text)
         if len(text) < 200:
             return None  # likely a redirect to a JS shell or empty page
         return ScrapedDoc(
             text=text,
             url=url,
             kind=self.kind,
-            title=_extract_title(r.text),
+            title=extract_title(r.text),
             competitor=comp.name,
             metadata={"path": path, "domain": comp.domain},
         )
-
-
-def _html_to_text(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
-    for tag in soup(["script", "style", "noscript", "svg"]):
-        tag.decompose()
-    return "\n".join(
-        line.strip() for line in soup.get_text("\n").splitlines() if line.strip()
-    )
-
-
-def _extract_title(html: str) -> str | None:
-    soup = BeautifulSoup(html, "html.parser")
-    if soup.title and soup.title.string:
-        return soup.title.string.strip()
-    return None

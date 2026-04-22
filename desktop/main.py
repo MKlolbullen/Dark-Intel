@@ -144,14 +144,32 @@ class MainWindow(QMainWindow):
         self._worker = PipelineWorker(
             business, industry, question, channels, competitors_input
         )
+        self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
 
-    def _on_finished(self, analysis_id: int, answer: str, details: dict) -> None:
+    _STAGE_LABELS = {
+        "resolving_competitors": "Resolving competitors…",
+        "scraping": "Scraping sources…",
+        "processing": "Extracting entities + inferring relations…",
+        "answering": "Asking Claude…",
+        "comparing": "Generating head-to-head table…",
+        "done": "Wrapping up…",
+    }
+
+    def _on_progress(self, stage: str) -> None:
+        self.statusBar().showMessage(self._STAGE_LABELS.get(stage, stage))
+
+    def _on_finished(
+        self, analysis_id: int, answer: str, details: dict, source_counts: dict
+    ) -> None:
         self._set_running(False)
-        self.statusBar().showMessage(f"Analysis #{analysis_id} complete.")
-        html = _render_results(analysis_id, answer, details)
+        summary = ", ".join(f"{k} {v}" for k, v in source_counts.items()) or "nothing"
+        self.statusBar().showMessage(
+            f"Analysis #{analysis_id} complete · scraped: {summary}"
+        )
+        html = _render_results(analysis_id, answer, details, source_counts)
         self._results.setHtml(html)
         self._graph_view.setUrl(QUrl(f"{self._server.url}/graph?analysis_id={analysis_id}"))
         self._dashboard_view.setUrl(QUrl(f"{self._server.url}/dashboard?analysis_id={analysis_id}"))
@@ -171,15 +189,28 @@ class MainWindow(QMainWindow):
             cb.setEnabled(not running)
 
 
-def _render_results(analysis_id: int, answer: str, details: dict) -> str:
+def _render_results(
+    analysis_id: int, answer: str, details: dict, source_counts: dict
+) -> str:
     rows = "".join(
         f'<li><span style="color:#6b7280">{label}</span> '
         f'<a href="{src}">{src}</a></li>'
         for label, src in details.items()
     )
+    counts_html = ""
+    if source_counts:
+        parts = " · ".join(
+            f'<span style="color:#9ca3af">{_escape(name)}</span> {count}'
+            for name, count in source_counts.items()
+        )
+        counts_html = (
+            '<p style="color:#6b7280; font-size:0.8rem; margin:0 0 0.5rem 0">'
+            f"Sources: {parts}</p>"
+        )
     return (
         '<div style="font-family: ui-sans-serif, system-ui;">'
         f"<h2>Analysis #{analysis_id}</h2>"
+        f"{counts_html}"
         '<h3 style="color:#6b7280; font-size:0.8rem; text-transform:uppercase">Answer</h3>'
         f'<p style="white-space:pre-wrap">{_escape(answer)}</p>'
         + ('<h3 style="color:#6b7280; font-size:0.8rem; text-transform:uppercase">Sources</h3>'
@@ -193,6 +224,9 @@ def _escape(s: str) -> str:
 
 
 def main() -> None:
+    from app.logging_config import configure as configure_logging
+
+    configure_logging()
     app = QApplication(sys.argv)
     server = FlaskServer()
     try:

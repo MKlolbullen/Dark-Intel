@@ -35,7 +35,7 @@ Dark-Intel is a business-intelligence pipeline with two front ends over the same
 
 ### Request flow
 
-`POST /` (web) and the Run-analysis button (Qt) both end at `app.pipeline.run_pipeline(business_name, industry, question, channels, competitors_input)`. The pipeline:
+`POST /` (web) and the Run-analysis button (Qt) both end at `app.pipeline.run_pipeline(business_name, industry, question, channels, competitors_input, progress=None)`. The optional `progress` callback receives stage names (`resolving_competitors`, `scraping`, `processing`, `answering`, `comparing`, `done`); the Qt worker emits these as a `Signal` so the status bar tracks the current stage. `run_pipeline` returns `(analysis_id, answer, details, source_counts)` — `source_counts` is `{channel: int}` per invoked scraper and is surfaced on the results page and in the Qt status bar. The pipeline:
 
 1. **Resolve competitors** (`_resolve_competitors`): if the user pasted `Name (domain), Name2 (domain2)` into the Competitors field, parse it. Otherwise, when the `competitor` channel is enabled, call `app/intel/competitors.discover_competitors` — a Claude Opus call with `output_config.format` enforcing a JSON schema of `[{name, domain}, ...]`.
 2. **Insert an `Analysis` row** (`app/models.py:create_analysis`) with the user's inputs, the RAG model name, and the resolved competitor list (JSON-encoded). Returns the `analysis_id` that everything downstream is keyed on.
@@ -112,6 +112,12 @@ After the RAG answer, the pipeline also calls `app/analysis/comparison.generate_
 ### Follow-up Q&A (`app/pipeline/qa.py`)
 
 Each completed analysis has a chat thread at `/chat?analysis_id=N`. `process_doc` writes the full cleaned `doc.page_content` to `Source.text` on first upsert, so the follow-up path can re-retrieve without re-scraping. `qa.answer_followup` rebuilds a FAISS index from `Source.text` the first time an analysis is asked a follow-up and caches it in a module-level LRU keyed by `analysis_id` (size 8). Each question pulls the top-8 chunks, appends the last 4 `ChatTurn`s as prior context, adds the stored competitor list to the prompt, and runs Claude Opus with adaptive thinking. The answer is persisted as a `ChatTurn` row. `qa.invalidate(analysis_id)` evicts the cache entry after re-running an analysis.
+
+### Observability
+
+`app/logging_config.py:configure()` sets up stdlib logging (level from `DARK_INTEL_LOG_LEVEL`, default `INFO`), called from `create_app()` and `desktop/main.main()`. Every scraper logs enable/disable + result counts via `BaseScraper.fetch`; the Gemini and Grok adapters log non-JSON output (prefix of 200 chars) so malformed structured-output responses are visible. `desktop/server.py` inherits the parent's stderr so those logs reach the terminal that launched `python desktop.py`.
+
+HTML cleaning for the `news` and `competitor` scrapers shares `app/scrapers/_html.py:clean_html_to_text` — drops `nav`/`header`/`footer`/`aside`/`form`/`svg`/`iframe` plus `role=navigation|banner|contentinfo` and prefers `<article>`/`<main>` when present. Keeps entity extraction from picking up copyright notices and nav menus.
 
 ## Caveats worth flagging
 
