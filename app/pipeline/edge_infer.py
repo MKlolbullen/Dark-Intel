@@ -23,7 +23,7 @@ async def infer_relation_async(text: str, entity1: str, entity2: str) -> str:
     )
     try:
         response = await _client.messages.create(
-            model=Config.CLAUDE_MODEL,
+            model=Config.CLAUDE_MODEL_RELATION,
             max_tokens=32,
             system=_SYSTEM,
             messages=[{"role": "user", "content": user}],

@@ -1,11 +1,12 @@
 import asyncio
+from typing import Sequence
 
+from ..config import Config
 from ..models import add_edge, upsert_node
-from .async_loader import load_documents
 from .edge_infer import infer_relation_async
 from .entities import extract_entities
 from .rag import build_qa_chain
-from .source_selection import select_sources
+from .source_selection import gather_documents
 
 
 async def process_doc(doc):
@@ -17,8 +18,8 @@ async def process_doc(doc):
         upsert_node(ent, ent_type)
         add_edge(page_url, ent, "mentions")
 
-    tasks = []
     pairs = []
+    tasks = []
     for i in range(len(entities)):
         for j in range(i + 1, len(entities)):
             ent1, ent2 = entities[i][0], entities[j][0]
@@ -31,16 +32,24 @@ async def process_doc(doc):
             add_edge(ent1, ent2, rel)
 
 
-async def run_pipeline_async(question: str):
-    urls = select_sources(question)
-    docs = await load_documents(urls)
+async def run_pipeline_async(
+    business_name: str,
+    industry: str,
+    question: str,
+    channels: Sequence[str] | None = None,
+):
+    chans = list(channels) if channels else list(Config.DEFAULT_CHANNELS)
+    docs = await gather_documents(business_name, industry, question, chans)
     if not docs:
         return "No data retrieved.", {}
 
     await asyncio.gather(*[process_doc(doc) for doc in docs])
 
     chain = build_qa_chain(docs)
-    result = chain.invoke({"query": question})
+    full_question = (
+        f"Business: {business_name}\nIndustry: {industry}\n\nQuestion: {question}"
+    )
+    result = chain.invoke({"query": full_question})
     answer = result["result"].strip()
     details = {
         f"[{i + 1}]": doc.metadata.get("source", "N/A")
@@ -49,5 +58,10 @@ async def run_pipeline_async(question: str):
     return answer, details
 
 
-def run_pipeline(question: str):
-    return asyncio.run(run_pipeline_async(question))
+def run_pipeline(
+    business_name: str,
+    industry: str,
+    question: str,
+    channels: Sequence[str] | None = None,
+):
+    return asyncio.run(run_pipeline_async(business_name, industry, question, channels))
